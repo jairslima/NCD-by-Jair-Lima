@@ -2,7 +2,8 @@
 import { program } from 'commander';
 import * as path from 'path';
 import * as fs from 'fs';
-import { runApp } from './ui/app';
+import * as os from 'os';
+import { runApp, runPicker } from './ui/app';
 import { runSetup } from './setup';
 import { findDirectories } from './core/search';
 
@@ -20,15 +21,21 @@ program
   .command('go [directory]', { isDefault: true })
   .description('Open directory navigator')
   .action((directory: string = process.cwd()) => {
+    // No argument — open TUI from current directory
+    if (!directory || directory === process.cwd()) {
+      runApp(process.cwd());
+      return;
+    }
+
     const startPath = path.resolve(directory);
 
+    // Argument is a valid existing path — open TUI there
     if (fs.existsSync(startPath)) {
-      // Valid path — open directly
       runApp(startPath);
       return;
     }
 
-    // Not a valid path — search the disk for a folder with that name
+    // Argument is a name — search the disk for a matching directory
     process.stderr.write(`Searching for "${directory}"...\n`);
     const matches = findDirectories(directory);
 
@@ -38,25 +45,20 @@ program
     }
 
     if (matches.length === 1) {
-      // Single match — go directly
-      runApp(matches[0]);
+      // Single match — go directly, no TUI needed
+      goToPath(matches[0]);
       return;
     }
 
-    // Multiple matches — open the parent of the first match so user can pick
-    // Show all matches as a list starting from the common ancestor
-    const commonRoot = findCommonRoot(matches);
-    runApp(commonRoot);
+    // Multiple matches — show a simple picker
+    runPicker(matches);
   });
 
-function findCommonRoot(paths: string[]): string {
-  if (paths.length === 0) return process.cwd();
-  const parts = paths[0].split(path.sep);
-  for (let i = parts.length - 1; i >= 1; i--) {
-    const candidate = parts.slice(0, i).join(path.sep) || path.parse(paths[0]).root;
-    if (paths.every(p => p.startsWith(candidate))) return candidate;
-  }
-  return path.parse(paths[0]).root;
+export function goToPath(dirPath: string): void {
+  const lastFile = path.join(os.homedir(), '.ncd_last');
+  fs.writeFileSync(lastFile, dirPath, 'utf8');
+  process.stderr.write('\nNCD by Jair Lima\n');
+  process.exit(0);
 }
 
 program.parse();
