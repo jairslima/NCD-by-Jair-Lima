@@ -275,55 +275,77 @@ export function runApp(startPath: string): void {
   treeBox.focus();
 }
 
-// Simple picker for multiple search matches
+// Picker TUI shown when multiple directories share the same name
 export function runPicker(matches: string[]): void {
-  const { goToPath } = require('../index');
+  const { goToPath } = require('../core/navigation') as typeof import('../core/navigation');
+
+  const name = path.basename(matches[0]);
 
   const screen = blessed.screen({
     smartCSR: true,
-    title: 'NCD - Select Directory',
+    title: 'NCD - Ambiguous Directory',
     fullUnicode: true,
     output: process.stderr,
   });
 
   const header = blessed.box({
     top: 0, left: 0, width: '100%', height: 1,
-    content: `  NCD - Found ${matches.length} matches. Select a directory:`,
+    content: `  NCD - Ambiguous: ${matches.length} directories named "${name}"`,
     style: { fg: 'black', bg: 'cyan', bold: true },
   });
 
+  // Build display lines: "  [name]  →  parent/path"
+  const items = matches.map(m => {
+    const parent = path.dirname(m);
+    return `  ${path.basename(m)}  →  ${parent}`;
+  });
+
   const list = blessed.list({
-    top: 1, left: 0, width: '100%', bottom: 2,
+    top: 1, left: 0, width: '100%', bottom: 3,
     scrollable: true, keys: false, mouse: false,
-    items: matches,
+    items,
     style: {
       fg: 'white', bg: 'black',
       selected: { fg: 'black', bg: 'green', bold: true },
     },
   });
 
+  const pathBar = blessed.box({
+    bottom: 2, left: 0, width: '100%', height: 1,
+    content: `  Path: ${matches[0]}`,
+    style: { fg: 'white', bg: 'blue' },
+  });
+
   const help = blessed.box({
     bottom: 1, left: 0, width: '100%', height: 1,
-    content: '  ↑↓ Navigate   Enter Select   Esc Cancel',
+    content: '  ↑↓/jk Navigate   Enter Select   Esc/Q Cancel',
     style: { fg: 'black', bg: 'white' },
   });
 
   const status = blessed.box({
     bottom: 0, left: 0, width: '100%', height: 1,
-    content: '',
+    content: `  1/${matches.length}`,
     style: { fg: 'white', bg: 'black' },
   });
 
   screen.append(header);
   screen.append(list);
+  screen.append(pathBar);
   screen.append(help);
   screen.append(status);
 
   let idx = 0;
-  list.select(0);
 
-  screen.key(['up', 'k'], () => { if (idx > 0) { idx--; list.select(idx); screen.render(); } });
-  screen.key(['down', 'j'], () => { if (idx < matches.length - 1) { idx++; list.select(idx); screen.render(); } });
+  function updateSelection(newIdx: number) {
+    idx = newIdx;
+    list.select(idx);
+    pathBar.setContent(`  Path: ${matches[idx]}`);
+    status.setContent(`  ${idx + 1}/${matches.length}`);
+    screen.render();
+  }
+
+  screen.key(['up', 'k'], () => { if (idx > 0) updateSelection(idx - 1); });
+  screen.key(['down', 'j'], () => { if (idx < matches.length - 1) updateSelection(idx + 1); });
 
   screen.key(['enter'], () => {
     screen.destroy();
@@ -335,6 +357,6 @@ export function runPicker(matches: string[]): void {
     process.exit(0);
   });
 
+  updateSelection(0);
   list.focus();
-  screen.render();
 }
