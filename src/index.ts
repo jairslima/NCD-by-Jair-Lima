@@ -56,7 +56,7 @@ program
     const matches = findDirectories(directory);
 
     if (matches.length === 0) {
-      process.stderr.write(`NCD: no directory named "${directory}" found.\n`);
+      process.stderr.write(`\nNCD by Jair Lima\nDirectory "${directory}" not found.\n`);
       process.exit(1);
     }
 
