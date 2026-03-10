@@ -23,24 +23,21 @@ program
   .description('Open directory navigator')
   .action((directory: string = process.cwd()) => {
 
-    // ── Case 1: no argument — open TUI, rebuild index if current dir is new ──
+    // ── Case 1: no argument — open full drive tree, highlight current dir ────
     if (!directory || directory === process.cwd()) {
       const cwd = process.cwd();
+      const driveRoot = path.parse(cwd).root; // e.g. "C:\"
 
       if (!indexExists() || !isDirInIndex(cwd)) {
         process.stderr.write('Building index (first run or new directory)...\n');
-        let lastMsg = '';
-        const count = buildIndex((current, n) => {
-          const msg = `  Scanning... ${n} dirs found\r`;
-          if (msg !== lastMsg) {
-            process.stderr.write(msg);
-            lastMsg = msg;
-          }
+        const count = buildIndex((_, n) => {
+          process.stderr.write(`  Scanning... ${n} dirs found\r`);
         });
         process.stderr.write(`\n  Index built: ${count} directories\n\n`);
       }
 
-      runApp(cwd);
+      // Open from drive root, pre-expand to current directory
+      runApp(driveRoot, cwd);
       return;
     }
 

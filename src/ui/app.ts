@@ -20,10 +20,26 @@ function formatLine(node: DirNode, isSelected: boolean): string {
   return `${marker} ${indent}${icon} ${node.name}`;
 }
 
-export function runApp(startPath: string): void {
+export function runApp(startPath: string, highlightPath?: string): void {
   const root = createNode(startPath, 0);
   root.expanded = true;
   loadChildren(root);
+
+  // Pre-expand tree down to highlightPath so it's visible on open
+  let initialHighlight: string | undefined;
+  if (highlightPath && highlightPath.toLowerCase().startsWith(startPath.toLowerCase())) {
+    const segments = highlightPath.slice(startPath.length).split(path.sep).filter(Boolean);
+    let current = root;
+    for (const seg of segments) {
+      if (!current.children) loadChildren(current);
+      const child = current.children?.find(c => path.basename(c.path).toLowerCase() === seg.toLowerCase());
+      if (!child) break;
+      loadChildren(child);
+      child.expanded = true;
+      current = child;
+    }
+    initialHighlight = highlightPath;
+  }
 
   let flatNodes: DirNode[] = [];
   let selectedIndex = 0;
@@ -270,6 +286,13 @@ export function runApp(startPath: string): void {
     setStatus(`  Index rebuilt: ${count} directories found`);
     render();
   });
+
+  // Position cursor on highlightPath after first render
+  if (initialHighlight) {
+    flatNodes = flattenVisible(root);
+    const idx = flatNodes.findIndex(n => n.path.toLowerCase() === initialHighlight!.toLowerCase());
+    if (idx !== -1) selectedIndex = idx;
+  }
 
   render();
   treeBox.focus();
