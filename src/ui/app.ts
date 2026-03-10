@@ -10,6 +10,7 @@ import {
   flattenVisible,
   searchNodes,
 } from '../core/directory';
+import { buildIndex } from '../core/index-manager';
 
 function formatLine(node: DirNode, isSelected: boolean): string {
   const indent = '  '.repeat(node.level);
@@ -88,7 +89,7 @@ export function runApp(startPath: string): void {
     left: 0,
     width: '100%',
     height: 1,
-    content: '  ↑↓/jk Navigate   Enter Select/CD   Space Expand   →/← Open/Close   / Search   Q Quit',
+    content: '  ↑↓/jk Navigate   Enter Select/CD   Space Expand   →/← Open/Close   / Search   F5 Rebuild Index   Q/Esc Quit',
     style: { fg: 'black', bg: 'white' },
   });
 
@@ -253,6 +254,21 @@ export function runApp(startPath: string): void {
   screen.key(['q', 'Q', 'C-c'], () => {
     screen.destroy();
     process.exit(0);
+  });
+
+  screen.key(['f5'], () => {
+    setStatus('  Rebuilding index... please wait');
+    screen.render();
+
+    let lastCount = 0;
+    const count = buildIndex((_, n) => {
+      lastCount = n;
+      setStatus(`  Rebuilding index... ${n} dirs found`);
+      screen.render();
+    });
+
+    setStatus(`  Index rebuilt: ${count} directories found`);
+    render();
   });
 
   render();
