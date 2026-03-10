@@ -17,13 +17,13 @@ const SYSTEM_DIR_NAMES = new Set([
 
 function getDirColor(dirPath: string, bookmarkedSet: Set<string>, cwdPath: string): [string, string] {
   const lower = dirPath.toLowerCase();
-  const name = path.basename(lower);
+  const name  = path.basename(lower);
 
   if (bookmarkedSet.has(lower))                              return ['{yellow-fg}', '{/yellow-fg}'];
   if (lower === cwdPath.toLowerCase())                       return ['{cyan-fg}',   '{/cyan-fg}'];
-  if (SYSTEM_DIR_NAMES.has(name))                            return ['{grey-fg}',   '{/grey-fg}'];
-  if (name.startsWith('.'))                                  return ['{grey-fg}',   '{/grey-fg}'];
   if (path.dirname(lower) === os.homedir().toLowerCase())    return ['{green-fg}',  '{/green-fg}'];
+  if (SYSTEM_DIR_NAMES.has(name))                            return ['{blue-fg}',   '{/blue-fg}'];
+  if (name.startsWith('.'))                                  return ['{blue-fg}',   '{/blue-fg}'];
   return ['', ''];
 }
 
