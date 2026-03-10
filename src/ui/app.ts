@@ -3,294 +3,264 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { DirNode } from '../types';
-import {
-  createNode,
-  loadChildren,
-  checkHasKids,
-  flattenVisible,
-  searchNodes,
-} from '../core/directory';
+import { createNode, loadChildren, checkHasKids, flattenVisible, searchNodes } from '../core/directory';
 import { buildIndex } from '../core/index-manager';
+import { loadBookmarks, toggleBookmark } from '../core/bookmarks';
+import { loadHistory } from '../core/history';
+import { goToPath } from '../core/navigation';
 
-function formatLine(node: DirNode, isSelected: boolean): string {
-  const indent = '  '.repeat(node.level);
-  const hasKids = checkHasKids(node);
-  const icon = !hasKids ? '[ ]' : node.expanded ? '[-]' : '[+]';
-  const marker = isSelected ? '>' : ' ';
-  return `${marker} ${indent}${icon} ${node.name}`;
+// ── Color scheme ──────────────────────────────────────────────────────────────
+const SYSTEM_DIR_NAMES = new Set([
+  'windows', 'program files', 'program files (x86)', 'programdata',
+  'recovery', '$recycle.bin', 'system volume information', 'perflogs', 'boot',
+]);
+
+function getDirColor(dirPath: string, bookmarkedSet: Set<string>, cwdPath: string): [string, string] {
+  const lower = dirPath.toLowerCase();
+  const name = path.basename(lower);
+
+  if (bookmarkedSet.has(lower))                              return ['{yellow-fg}', '{/yellow-fg}'];
+  if (lower === cwdPath.toLowerCase())                       return ['{cyan-fg}',   '{/cyan-fg}'];
+  if (SYSTEM_DIR_NAMES.has(name))                            return ['{grey-fg}',   '{/grey-fg}'];
+  if (name.startsWith('.'))                                  return ['{grey-fg}',   '{/grey-fg}'];
+  if (path.dirname(lower) === os.homedir().toLowerCase())    return ['{green-fg}',  '{/green-fg}'];
+  return ['', ''];
 }
 
+function formatLine(node: DirNode, isSelected: boolean, bookmarkedSet: Set<string>, cwdPath: string): string {
+  const indent    = '  '.repeat(node.level);
+  const hasKids   = checkHasKids(node);
+  const icon      = !hasKids ? '[ ]' : node.expanded ? '[-]' : '[+]';
+  const marker    = isSelected ? '>' : ' ';
+  const star      = bookmarkedSet.has(node.path.toLowerCase()) ? '\u2605 ' : '';
+  const [open, close] = getDirColor(node.path, bookmarkedSet, cwdPath);
+  return `${open}${marker} ${indent}${icon} ${star}${node.name}${close}`;
+}
+
+// ── Drive detection ───────────────────────────────────────────────────────────
+function getAvailableDrives(): string[] {
+  if (process.platform !== 'win32') return ['/'];
+  const drives: string[] = [];
+  for (let c = 67; c <= 90; c++) {
+    const drive = String.fromCharCode(c) + ':\\';
+    try { fs.readdirSync(drive); drives.push(drive); } catch { /* not available */ }
+  }
+  return drives.length > 0 ? drives : ['C:\\'];
+}
+
+// ── Main TUI ──────────────────────────────────────────────────────────────────
 export function runApp(startPath: string, highlightPath?: string): void {
-  const root = createNode(startPath, 0);
+  const cwdPath = highlightPath || startPath;
+  const drives  = getAvailableDrives();
+  let driveIdx  = drives.findIndex(d => startPath.toLowerCase().startsWith(d.toLowerCase()));
+  if (driveIdx < 0) driveIdx = 0;
+
+  let root = createNode(startPath, 0);
   root.expanded = true;
   loadChildren(root);
 
-  // Pre-expand tree down to highlightPath so it's visible on open
-  let initialHighlight: string | undefined;
+  // Pre-expand tree to highlightPath
   if (highlightPath && highlightPath.toLowerCase().startsWith(startPath.toLowerCase())) {
     const segments = highlightPath.slice(startPath.length).split(path.sep).filter(Boolean);
-    let current = root;
+    let cur = root;
     for (const seg of segments) {
-      if (!current.children) loadChildren(current);
-      const child = current.children?.find(c => path.basename(c.path).toLowerCase() === seg.toLowerCase());
+      if (!cur.children) loadChildren(cur);
+      const child = cur.children?.find(c => path.basename(c.path).toLowerCase() === seg.toLowerCase());
       if (!child) break;
       loadChildren(child);
       child.expanded = true;
-      current = child;
+      cur = child;
     }
-    initialHighlight = highlightPath;
   }
 
-  let flatNodes: DirNode[] = [];
-  let selectedIndex = 0;
-  let searchQuery = '';
-  let searchMode = false;
+  let flatNodes: DirNode[]  = [];
+  let selectedIndex         = 0;
+  let searchQuery           = '';
+  let searchMode            = false;
+  let bookmarkedSet         = new Set(loadBookmarks().map(b => b.toLowerCase()));
 
-  const screen = blessed.screen({
-    smartCSR: true,
-    title: 'NCD - New Change Directory',
-    fullUnicode: true,
-    output: process.stderr,  // TUI on stderr; stdout reserved for selected path
-  });
+  const screen = blessed.screen({ smartCSR: true, title: 'NCD', fullUnicode: true, output: process.stderr });
 
-  const headerBox = blessed.box({
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: 1,
-    content: '  NCD - New Change Directory  |  by Jair Lima',
-    style: { fg: 'black', bg: 'cyan', bold: true },
-  });
-
-  const pathBox = blessed.box({
-    top: 1,
-    left: 0,
-    width: '100%',
-    height: 1,
-    content: '',
-    style: { fg: 'white', bg: 'blue' },
-  });
+  const headerBox = blessed.box({ top: 0, left: 0, width: '100%', height: 1, content: '', style: { fg: 'black', bg: 'cyan', bold: true } });
+  const pathBox   = blessed.box({ top: 1, left: 0, width: '100%', height: 1, content: '', style: { fg: 'white', bg: 'blue' } });
 
   const treeBox = blessed.list({
-    top: 2,
-    left: 0,
-    width: '100%',
-    bottom: 3,
-    scrollable: true,
-    mouse: false,
-    keys: false,
-    scrollbar: {
-      ch: ' ',
-      track: { bg: 'blue' },
-      style: { inverse: true },
-    },
-    style: {
-      fg: 'white',
-      bg: 'black',
-      selected: { fg: 'black', bg: 'green', bold: true },
-    },
+    top: 2, left: 0, width: '100%', bottom: 4,
+    scrollable: true, keys: false, mouse: false, tags: true,
+    scrollbar: { ch: ' ', track: { bg: 'blue' }, style: { inverse: true } },
+    style: { fg: 'white', bg: 'black', selected: { fg: 'black', bg: 'green', bold: true } },
   });
 
-  const searchBox = blessed.box({
-    bottom: 2,
-    left: 0,
-    width: '100%',
-    height: 1,
-    content: '  Press / to search',
-    style: { fg: 'gray', bg: 'black' },
-  });
-
-  const helpBox = blessed.box({
-    bottom: 1,
-    left: 0,
-    width: '100%',
-    height: 1,
-    content: '  ↑↓/jk Navigate   Enter Select/CD   Space Expand   →/← Open/Close   / Search   F5 Rebuild Index   Q/Esc Quit',
-    style: { fg: 'black', bg: 'white' },
-  });
-
-  const statusBox = blessed.box({
-    bottom: 0,
-    left: 0,
-    width: '100%',
-    height: 1,
-    content: '',
-    style: { fg: 'white', bg: 'black' },
-  });
+  const searchBox = blessed.box({ bottom: 3, left: 0, width: '100%', height: 1, content: '  Press / to search', style: { fg: 'grey', bg: 'black' } });
+  const help1Box  = blessed.box({ bottom: 2, left: 0, width: '100%', height: 1, content: '  \u2191\u2193/jk Nav   Enter CD   Space Expand   \u2192/\u2190 Open/Close   / Search   Esc/Q Quit', style: { fg: 'black', bg: 'white' } });
+  const help2Box  = blessed.box({ bottom: 1, left: 0, width: '100%', height: 1, content: '  B Bookmark   F Favorites   H History   Tab Drive   F5 Rebuild Index', style: { fg: 'black', bg: 'white' } });
+  const statusBox = blessed.box({ bottom: 0, left: 0, width: '100%', height: 1, content: '', style: { fg: 'white', bg: 'black' } });
 
   screen.append(headerBox);
   screen.append(pathBox);
   screen.append(treeBox);
   screen.append(searchBox);
-  screen.append(helpBox);
+  screen.append(help1Box);
+  screen.append(help2Box);
   screen.append(statusBox);
 
-  function setStatus(msg: string) {
-    statusBox.setContent('  ' + msg);
+  function setStatus(msg: string) { statusBox.setContent('  ' + msg); }
+
+  function updateHeader() {
+    const driveLabels = drives.map((d, i) => {
+      const label = d.replace(':\\', ':');
+      return i === driveIdx ? `[${label}]` : label;
+    }).join('  ');
+    headerBox.setContent(`  NCD - New Change Directory  |  ${driveLabels}`);
   }
 
   function render() {
-    flatNodes = searchMode && searchQuery
-      ? searchNodes(root, searchQuery)
-      : flattenVisible(root);
-
+    flatNodes = searchMode && searchQuery ? searchNodes(root, searchQuery) : flattenVisible(root);
     if (selectedIndex >= flatNodes.length) selectedIndex = Math.max(0, flatNodes.length - 1);
 
-    const items = flatNodes.map((node, i) => formatLine(node, i === selectedIndex));
-    treeBox.setItems(items as any);
+    treeBox.setItems(flatNodes.map((n, i) => formatLine(n, i === selectedIndex, bookmarkedSet, cwdPath)) as any);
     treeBox.select(selectedIndex);
     treeBox.scrollTo(selectedIndex);
 
-    const current = flatNodes[selectedIndex];
-    pathBox.setContent('  Path: ' + (current ? current.path : ''));
+    const cur = flatNodes[selectedIndex];
+    pathBox.setContent('  Path: ' + (cur ? cur.path : ''));
 
     if (searchMode) {
       searchBox.setContent(`  Search: ${searchQuery}_`);
-      searchBox.style.fg = 'yellow';
+      (searchBox.style as any).fg = 'yellow';
     } else {
       searchBox.setContent('  Press / to search');
-      searchBox.style.fg = 'gray';
+      (searchBox.style as any).fg = 'grey';
     }
 
-    setStatus(flatNodes.length > 0
-      ? `${selectedIndex + 1}/${flatNodes.length} dirs${searchMode ? `  [SEARCH: "${searchQuery}"]` : ''}`
-      : 'No directories found'
-    );
+    setStatus(`${selectedIndex + 1}/${flatNodes.length} dirs` +
+      (bookmarkedSet.size > 0 ? `   \u2605 ${bookmarkedSet.size} bookmarks` : '') +
+      (searchMode ? `   [SEARCH: "${searchQuery}"]` : ''));
 
+    updateHeader();
+    screen.render();
+  }
+
+  function moveSelection(delta: number) {
+    const next = Math.max(0, Math.min(flatNodes.length - 1, selectedIndex + delta));
+    if (next === selectedIndex) return;
+    selectedIndex = next;
+    treeBox.setItems(flatNodes.map((n, i) => formatLine(n, i === selectedIndex, bookmarkedSet, cwdPath)) as any);
+    treeBox.select(selectedIndex);
+    treeBox.scrollTo(selectedIndex);
+    const cur = flatNodes[selectedIndex];
+    pathBox.setContent('  Path: ' + (cur ? cur.path : ''));
+    setStatus(`${selectedIndex + 1}/${flatNodes.length} dirs` + (bookmarkedSet.size > 0 ? `   \u2605 ${bookmarkedSet.size} bookmarks` : ''));
     screen.render();
   }
 
   function toggleExpand() {
     const node = flatNodes[selectedIndex];
     if (!node) return;
-
-    if (node.expanded) {
-      node.expanded = false;
-    } else {
-      loadChildren(node);
-      node.expanded = true;
-    }
+    if (node.expanded) { node.expanded = false; }
+    else { loadChildren(node); node.expanded = true; }
     render();
   }
 
-  function exitWithPath(dirPath: string) {
-    screen.destroy();
-    const lastFile = path.join(os.homedir(), '.ncd_last');
-    fs.writeFileSync(lastFile, dirPath, 'utf8');
-    process.stderr.write('\nNCD by Jair Lima\n');
-    process.exit(0);
+  function switchToDrive(idx: number) {
+    driveIdx = idx;
+    root = createNode(drives[driveIdx], 0);
+    root.expanded = true;
+    loadChildren(root);
+    selectedIndex = 0;
+    render();
   }
 
-  function moveSelection(delta: number) {
-    const next = selectedIndex + delta;
-    if (next < 0 || next >= flatNodes.length) return;
-    selectedIndex = next;
-    const items = flatNodes.map((node, i) => formatLine(node, i === selectedIndex));
-    treeBox.setItems(items as any);
-    treeBox.select(selectedIndex);
-    treeBox.scrollTo(selectedIndex);
-    const current = flatNodes[selectedIndex];
-    pathBox.setContent('  Path: ' + (current ? current.path : ''));
-    setStatus(`${selectedIndex + 1}/${flatNodes.length} dirs${searchMode ? `  [SEARCH: "${searchQuery}"]` : ''}`);
-    screen.render();
-  }
-
-  screen.key(['up', 'k'], () => moveSelection(-1));
-  screen.key(['down', 'j'], () => moveSelection(1));
-  screen.key(['pageup'], () => moveSelection(-10));
-  screen.key(['pagedown'], () => moveSelection(10));
+  // ── Key bindings ─────────────────────────────────────────────────────────
+  screen.key(['up',   'k'],        () => moveSelection(-1));
+  screen.key(['down', 'j'],        () => moveSelection(1));
+  screen.key(['pageup'],           () => moveSelection(-10));
+  screen.key(['pagedown'],         () => moveSelection(10));
 
   screen.key(['enter'], () => {
     const node = flatNodes[selectedIndex];
-    if (node) exitWithPath(node.path);
+    if (node) { screen.destroy(); goToPath(node.path); }
   });
 
   screen.key(['space'], toggleExpand);
 
   screen.key(['right', 'l'], () => {
     const node = flatNodes[selectedIndex];
-    if (node && !node.expanded && checkHasKids(node)) {
-      loadChildren(node);
-      node.expanded = true;
-      render();
-    }
+    if (node && !node.expanded && checkHasKids(node)) { loadChildren(node); node.expanded = true; render(); }
   });
 
   screen.key(['left', 'h'], () => {
     const node = flatNodes[selectedIndex];
     if (!node) return;
-    if (node.expanded) {
-      node.expanded = false;
-      render();
-    } else if (node.level > 0) {
-      const parentPath = path.dirname(node.path);
-      const parentIdx = flatNodes.findIndex(n => n.path === parentPath);
-      if (parentIdx !== -1) {
-        flatNodes[parentIdx].expanded = false;
-        selectedIndex = parentIdx;
-        render();
-      }
+    if (node.expanded) { node.expanded = false; render(); }
+    else if (node.level > 0) {
+      const parentIdx = flatNodes.findIndex(n => n.path === path.dirname(node.path));
+      if (parentIdx !== -1) { flatNodes[parentIdx].expanded = false; selectedIndex = parentIdx; render(); }
     }
   });
 
-  screen.key(['/'], () => {
-    searchMode = true;
-    searchQuery = '';
-    render();
-  });
+  screen.key(['/'], () => { searchMode = true; searchQuery = ''; render(); });
 
   screen.key(['escape'], () => {
-    if (searchMode) {
-      searchMode = false;
-      searchQuery = '';
-      selectedIndex = 0;
-      render();
-    } else {
-      screen.destroy();
-      process.exit(0);
-    }
+    if (searchMode) { searchMode = false; searchQuery = ''; selectedIndex = 0; render(); }
+    else { screen.destroy(); process.exit(0); }
   });
 
   screen.key(['backspace'], () => {
-    if (searchMode && searchQuery.length > 0) {
-      searchQuery = searchQuery.slice(0, -1);
-      selectedIndex = 0;
-      render();
-    }
+    if (searchMode && searchQuery.length > 0) { searchQuery = searchQuery.slice(0, -1); selectedIndex = 0; render(); }
   });
 
   screen.on('keypress', (ch: string, key: any) => {
-    if (searchMode && ch && ch.length === 1 && key && !key.ctrl && !key.meta) {
-      searchQuery += ch;
-      selectedIndex = 0;
-      render();
-    }
+    if (searchMode && ch && ch.length === 1 && key && !key.ctrl && !key.meta) { searchQuery += ch; selectedIndex = 0; render(); }
   });
 
-  screen.key(['q', 'Q', 'C-c'], () => {
-    screen.destroy();
-    process.exit(0);
-  });
-
-  screen.key(['f5'], () => {
-    setStatus('  Rebuilding index... please wait');
-    screen.render();
-
-    let lastCount = 0;
-    const count = buildIndex((_, n) => {
-      lastCount = n;
-      setStatus(`  Rebuilding index... ${n} dirs found`);
-      screen.render();
-    });
-
-    setStatus(`  Index rebuilt: ${count} directories found`);
+  // Bookmark toggle (B)
+  screen.key(['b', 'B'], () => {
+    const node = flatNodes[selectedIndex];
+    if (!node) return;
+    const added = toggleBookmark(node.path);
+    bookmarkedSet = new Set(loadBookmarks().map(b => b.toLowerCase()));
+    setStatus(added ? `  \u2605 Bookmarked: ${node.path}` : `  Removed bookmark: ${node.path}`);
     render();
   });
 
-  // Position cursor on highlightPath after first render
-  if (initialHighlight) {
+  // Favorites list (F)
+  screen.key(['f', 'F'], () => {
+    const bm = loadBookmarks();
+    if (bm.length === 0) { setStatus('  No bookmarks yet. Press B to add.'); screen.render(); return; }
+    screen.destroy();
+    runPicker(bm, 'Favorites \u2605');
+  });
+
+  // History (H)
+  screen.key(['h', 'H'], () => {
+    const hist = loadHistory();
+    if (hist.length === 0) { setStatus('  No history yet.'); screen.render(); return; }
+    screen.destroy();
+    runPicker(hist, 'History');
+  });
+
+  // Drive switching (Tab)
+  screen.key(['tab'], () => {
+    if (drives.length <= 1) { setStatus('  No other drives available.'); screen.render(); return; }
+    switchToDrive((driveIdx + 1) % drives.length);
+  });
+
+  // Rebuild index (F5)
+  screen.key(['f5'], () => {
+    setStatus('  Rebuilding index...');
+    screen.render();
+    const count = buildIndex((_, n) => { setStatus(`  Rebuilding index... ${n} dirs`); screen.render(); });
+    setStatus(`  Index rebuilt: ${count} directories`);
+    render();
+  });
+
+  screen.key(['q', 'Q', 'C-c'], () => { screen.destroy(); process.exit(0); });
+
+  // Position cursor on highlightPath
+  if (highlightPath) {
     flatNodes = flattenVisible(root);
-    const idx = flatNodes.findIndex(n => n.path.toLowerCase() === initialHighlight!.toLowerCase());
+    const idx = flatNodes.findIndex(n => n.path.toLowerCase() === highlightPath.toLowerCase());
     if (idx !== -1) selectedIndex = idx;
   }
 
@@ -298,67 +268,34 @@ export function runApp(startPath: string, highlightPath?: string): void {
   treeBox.focus();
 }
 
-// Picker TUI shown when multiple directories share the same name
-export function runPicker(matches: string[]): void {
-  const { goToPath } = require('../core/navigation') as typeof import('../core/navigation');
+// ── Picker (ambiguity / favorites / history) ──────────────────────────────────
+export function runPicker(matches: string[], title: string = 'Select'): void {
+  const screen = blessed.screen({ smartCSR: true, title: `NCD - ${title}`, fullUnicode: true, output: process.stderr });
 
-  const name = path.basename(matches[0]);
+  const firstName = path.basename(matches[0]);
+  const isAmbiguous = matches.every(m => path.basename(m).toLowerCase() === firstName.toLowerCase());
+  const headerContent = isAmbiguous
+    ? `  NCD - Ambiguous: ${matches.length} directories named "${firstName}"`
+    : `  NCD - ${title} (${matches.length})`;
 
-  const screen = blessed.screen({
-    smartCSR: true,
-    title: 'NCD - Ambiguous Directory',
-    fullUnicode: true,
-    output: process.stderr,
-  });
-
-  const header = blessed.box({
-    top: 0, left: 0, width: '100%', height: 1,
-    content: `  NCD - Ambiguous: ${matches.length} directories named "${name}"`,
-    style: { fg: 'black', bg: 'cyan', bold: true },
-  });
-
-  // Build display lines: "  [name]  →  parent/path"
-  const items = matches.map(m => {
-    const parent = path.dirname(m);
-    return `  ${path.basename(m)}  →  ${parent}`;
-  });
-
-  const list = blessed.list({
+  const header  = blessed.box({ top: 0, left: 0, width: '100%', height: 1, content: headerContent, style: { fg: 'black', bg: 'cyan', bold: true } });
+  const list    = blessed.list({
     top: 1, left: 0, width: '100%', bottom: 3,
     scrollable: true, keys: false, mouse: false,
-    items,
-    style: {
-      fg: 'white', bg: 'black',
-      selected: { fg: 'black', bg: 'green', bold: true },
-    },
+    items: matches.map(m => `  ${path.basename(m)}  \u2192  ${path.dirname(m)}`),
+    style: { fg: 'white', bg: 'black', selected: { fg: 'black', bg: 'green', bold: true } },
   });
-
-  const pathBar = blessed.box({
-    bottom: 2, left: 0, width: '100%', height: 1,
-    content: `  Path: ${matches[0]}`,
-    style: { fg: 'white', bg: 'blue' },
-  });
-
-  const help = blessed.box({
-    bottom: 1, left: 0, width: '100%', height: 1,
-    content: '  ↑↓/jk Navigate   Enter Select   Esc/Q Cancel',
-    style: { fg: 'black', bg: 'white' },
-  });
-
-  const status = blessed.box({
-    bottom: 0, left: 0, width: '100%', height: 1,
-    content: `  1/${matches.length}`,
-    style: { fg: 'white', bg: 'black' },
-  });
+  const pathBar = blessed.box({ bottom: 2, left: 0, width: '100%', height: 1, content: `  Path: ${matches[0]}`, style: { fg: 'white', bg: 'blue' } });
+  const helpBox = blessed.box({ bottom: 1, left: 0, width: '100%', height: 1, content: '  \u2191\u2193/jk Navigate   Enter Select   Esc/Q Cancel', style: { fg: 'black', bg: 'white' } });
+  const status  = blessed.box({ bottom: 0, left: 0, width: '100%', height: 1, content: `  1/${matches.length}`, style: { fg: 'white', bg: 'black' } });
 
   screen.append(header);
   screen.append(list);
   screen.append(pathBar);
-  screen.append(help);
+  screen.append(helpBox);
   screen.append(status);
 
   let idx = 0;
-
   function updateSelection(newIdx: number) {
     idx = newIdx;
     list.select(idx);
@@ -367,18 +304,10 @@ export function runPicker(matches: string[]): void {
     screen.render();
   }
 
-  screen.key(['up', 'k'], () => { if (idx > 0) updateSelection(idx - 1); });
+  screen.key(['up',   'k'], () => { if (idx > 0) updateSelection(idx - 1); });
   screen.key(['down', 'j'], () => { if (idx < matches.length - 1) updateSelection(idx + 1); });
-
-  screen.key(['enter'], () => {
-    screen.destroy();
-    goToPath(matches[idx]);
-  });
-
-  screen.key(['escape', 'q', 'Q', 'C-c'], () => {
-    screen.destroy();
-    process.exit(0);
-  });
+  screen.key(['enter'],     () => { screen.destroy(); goToPath(matches[idx]); });
+  screen.key(['escape', 'q', 'Q', 'C-c'], () => { screen.destroy(); process.exit(0); });
 
   updateSelection(0);
   list.focus();
