@@ -33,6 +33,7 @@ export function runApp(startPath: string): void {
     smartCSR: true,
     title: 'NCD - New Change Directory',
     fullUnicode: true,
+    output: process.stderr,  // TUI on stderr; stdout reserved for selected path
   });
 
   const headerBox = blessed.box({
@@ -157,10 +158,9 @@ export function runApp(startPath: string): void {
 
   function exitWithPath(dirPath: string) {
     screen.destroy();
-    // Write to ~/.ncd_last so bash wrapper can read it
     const lastFile = path.join(os.homedir(), '.ncd_last');
     fs.writeFileSync(lastFile, dirPath, 'utf8');
-    console.log('\nNCD by Jair Lima');
+    process.stderr.write('\nNCD by Jair Lima\n');
     process.exit(0);
   }
 

@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "postinstall": "node dist/postinstall.js 2>/dev/null || true"
   },
   "keywords": ["ncd", "cli", "directory", "navigator", "tui", "norton"],
   "author": "Jair Lima",
