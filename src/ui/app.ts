@@ -87,7 +87,7 @@ export function runApp(startPath: string): void {
     left: 0,
     width: '100%',
     height: 1,
-    content: '  ↑↓/jk Navigate   Enter/Space Expand   →/← Open/Close   / Search   Esc Cancel   Q Quit',
+    content: '  ↑↓/jk Navigate   Enter Select/CD   Space Expand   →/← Open/Close   / Search   Q Quit',
     style: { fg: 'black', bg: 'white' },
   });
 
@@ -146,11 +146,6 @@ export function runApp(startPath: string): void {
     const node = flatNodes[selectedIndex];
     if (!node) return;
 
-    if (!checkHasKids(node)) {
-      exitWithPath(node.path);
-      return;
-    }
-
     if (node.expanded) {
       node.expanded = false;
     } else {
@@ -162,9 +157,10 @@ export function runApp(startPath: string): void {
 
   function exitWithPath(dirPath: string) {
     screen.destroy();
-    const tmpFile = path.join(os.tmpdir(), '.ncd_path');
-    fs.writeFileSync(tmpFile, dirPath, 'utf8');
-    process.stdout.write('\n' + dirPath + '\n');
+    // Write to ~/.ncd_last so bash wrapper can read it
+    const lastFile = path.join(os.homedir(), '.ncd_last');
+    fs.writeFileSync(lastFile, dirPath, 'utf8');
+    console.log('\nNCD by Jair Lima');
     process.exit(0);
   }
 
@@ -187,7 +183,12 @@ export function runApp(startPath: string): void {
   screen.key(['pageup'], () => moveSelection(-10));
   screen.key(['pagedown'], () => moveSelection(10));
 
-  screen.key(['enter', 'space'], toggleExpand);
+  screen.key(['enter'], () => {
+    const node = flatNodes[selectedIndex];
+    if (node) exitWithPath(node.path);
+  });
+
+  screen.key(['space'], toggleExpand);
 
   screen.key(['right', 'l'], () => {
     const node = flatNodes[selectedIndex];
