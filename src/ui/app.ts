@@ -1,0 +1,256 @@
+import * as blessed from 'blessed';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import { DirNode } from '../types';
+import {
+  createNode,
+  loadChildren,
+  checkHasKids,
+  flattenVisible,
+  searchNodes,
+} from '../core/directory';
+
+function formatLine(node: DirNode, isSelected: boolean): string {
+  const indent = '  '.repeat(node.level);
+  const hasKids = checkHasKids(node);
+  const icon = !hasKids ? '[ ]' : node.expanded ? '[-]' : '[+]';
+  const marker = isSelected ? '>' : ' ';
+  return `${marker} ${indent}${icon} ${node.name}`;
+}
+
+export function runApp(startPath: string): void {
+  const root = createNode(startPath, 0);
+  root.expanded = true;
+  loadChildren(root);
+
+  let flatNodes: DirNode[] = [];
+  let selectedIndex = 0;
+  let searchQuery = '';
+  let searchMode = false;
+
+  const screen = blessed.screen({
+    smartCSR: true,
+    title: 'NCD - New Change Directory',
+    fullUnicode: true,
+  });
+
+  const headerBox = blessed.box({
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: 1,
+    content: '  NCD - New Change Directory  |  by Jair Lima',
+    style: { fg: 'black', bg: 'cyan', bold: true },
+  });
+
+  const pathBox = blessed.box({
+    top: 1,
+    left: 0,
+    width: '100%',
+    height: 1,
+    content: '',
+    style: { fg: 'white', bg: 'blue' },
+  });
+
+  const treeBox = blessed.list({
+    top: 2,
+    left: 0,
+    width: '100%',
+    bottom: 3,
+    scrollable: true,
+    mouse: false,
+    keys: false,
+    scrollbar: {
+      ch: ' ',
+      track: { bg: 'blue' },
+      style: { inverse: true },
+    },
+    style: {
+      fg: 'white',
+      bg: 'black',
+      selected: { fg: 'black', bg: 'green', bold: true },
+    },
+  });
+
+  const searchBox = blessed.box({
+    bottom: 2,
+    left: 0,
+    width: '100%',
+    height: 1,
+    content: '  Press / to search',
+    style: { fg: 'gray', bg: 'black' },
+  });
+
+  const helpBox = blessed.box({
+    bottom: 1,
+    left: 0,
+    width: '100%',
+    height: 1,
+    content: '  ↑↓/jk Navigate   Enter/Space Expand   →/← Open/Close   / Search   Esc Cancel   Q Quit',
+    style: { fg: 'black', bg: 'white' },
+  });
+
+  const statusBox = blessed.box({
+    bottom: 0,
+    left: 0,
+    width: '100%',
+    height: 1,
+    content: '',
+    style: { fg: 'white', bg: 'black' },
+  });
+
+  screen.append(headerBox);
+  screen.append(pathBox);
+  screen.append(treeBox);
+  screen.append(searchBox);
+  screen.append(helpBox);
+  screen.append(statusBox);
+
+  function setStatus(msg: string) {
+    statusBox.setContent('  ' + msg);
+  }
+
+  function render() {
+    flatNodes = searchMode && searchQuery
+      ? searchNodes(root, searchQuery)
+      : flattenVisible(root);
+
+    if (selectedIndex >= flatNodes.length) selectedIndex = Math.max(0, flatNodes.length - 1);
+
+    const items = flatNodes.map((node, i) => formatLine(node, i === selectedIndex));
+    treeBox.setItems(items as any);
+    treeBox.select(selectedIndex);
+    treeBox.scrollTo(selectedIndex);
+
+    const current = flatNodes[selectedIndex];
+    pathBox.setContent('  Path: ' + (current ? current.path : ''));
+
+    if (searchMode) {
+      searchBox.setContent(`  Search: ${searchQuery}_`);
+      searchBox.style.fg = 'yellow';
+    } else {
+      searchBox.setContent('  Press / to search');
+      searchBox.style.fg = 'gray';
+    }
+
+    setStatus(flatNodes.length > 0
+      ? `${selectedIndex + 1}/${flatNodes.length} dirs${searchMode ? `  [SEARCH: "${searchQuery}"]` : ''}`
+      : 'No directories found'
+    );
+
+    screen.render();
+  }
+
+  function toggleExpand() {
+    const node = flatNodes[selectedIndex];
+    if (!node) return;
+
+    if (!checkHasKids(node)) {
+      exitWithPath(node.path);
+      return;
+    }
+
+    if (node.expanded) {
+      node.expanded = false;
+    } else {
+      loadChildren(node);
+      node.expanded = true;
+    }
+    render();
+  }
+
+  function exitWithPath(dirPath: string) {
+    screen.destroy();
+    const tmpFile = path.join(os.tmpdir(), '.ncd_path');
+    fs.writeFileSync(tmpFile, dirPath, 'utf8');
+    process.stdout.write('\n' + dirPath + '\n');
+    process.exit(0);
+  }
+
+  function moveSelection(delta: number) {
+    const next = selectedIndex + delta;
+    if (next < 0 || next >= flatNodes.length) return;
+    selectedIndex = next;
+    const items = flatNodes.map((node, i) => formatLine(node, i === selectedIndex));
+    treeBox.setItems(items as any);
+    treeBox.select(selectedIndex);
+    treeBox.scrollTo(selectedIndex);
+    const current = flatNodes[selectedIndex];
+    pathBox.setContent('  Path: ' + (current ? current.path : ''));
+    setStatus(`${selectedIndex + 1}/${flatNodes.length} dirs${searchMode ? `  [SEARCH: "${searchQuery}"]` : ''}`);
+    screen.render();
+  }
+
+  screen.key(['up', 'k'], () => moveSelection(-1));
+  screen.key(['down', 'j'], () => moveSelection(1));
+  screen.key(['pageup'], () => moveSelection(-10));
+  screen.key(['pagedown'], () => moveSelection(10));
+
+  screen.key(['enter', 'space'], toggleExpand);
+
+  screen.key(['right', 'l'], () => {
+    const node = flatNodes[selectedIndex];
+    if (node && !node.expanded && checkHasKids(node)) {
+      loadChildren(node);
+      node.expanded = true;
+      render();
+    }
+  });
+
+  screen.key(['left', 'h'], () => {
+    const node = flatNodes[selectedIndex];
+    if (!node) return;
+    if (node.expanded) {
+      node.expanded = false;
+      render();
+    } else if (node.level > 0) {
+      const parentPath = path.dirname(node.path);
+      const parentIdx = flatNodes.findIndex(n => n.path === parentPath);
+      if (parentIdx !== -1) {
+        flatNodes[parentIdx].expanded = false;
+        selectedIndex = parentIdx;
+        render();
+      }
+    }
+  });
+
+  screen.key(['/'], () => {
+    searchMode = true;
+    searchQuery = '';
+    render();
+  });
+
+  screen.key(['escape'], () => {
+    if (searchMode) {
+      searchMode = false;
+      searchQuery = '';
+      selectedIndex = 0;
+      render();
+    }
+  });
+
+  screen.key(['backspace'], () => {
+    if (searchMode && searchQuery.length > 0) {
+      searchQuery = searchQuery.slice(0, -1);
+      selectedIndex = 0;
+      render();
+    }
+  });
+
+  screen.on('keypress', (ch: string, key: any) => {
+    if (searchMode && ch && ch.length === 1 && key && !key.ctrl && !key.meta) {
+      searchQuery += ch;
+      selectedIndex = 0;
+      render();
+    }
+  });
+
+  screen.key(['q', 'Q', 'C-c'], () => {
+    screen.destroy();
+    process.exit(0);
+  });
+
+  render();
+  treeBox.focus();
+}
