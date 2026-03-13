@@ -16,8 +16,6 @@ const SKIP_DIRS = new Set([
   '__pycache__', '.svn', 'vendor', 'Temp', 'temp',
 ]);
 
-// ── Load / exists ─────────────────────────────────────────────────────────────
-
 export function indexExists(): boolean {
   return fs.existsSync(INDEX_FILE);
 }
@@ -36,8 +34,6 @@ export function isDirInIndex(dirPath: string): boolean {
   const norm = path.normalize(dirPath).toLowerCase();
   return index.dirs.some(d => path.normalize(d).toLowerCase() === norm);
 }
-
-// ── Add dirs ──────────────────────────────────────────────────────────────────
 
 export function addDirsToIndex(newDirs: string[]): void {
   const index = loadIndex();
@@ -61,7 +57,6 @@ export function scanAndAddToIndex(dir: string): number {
   const existing = new Set(index.dirs.map(d => path.normalize(d).toLowerCase()));
   const newDirs: string[] = [];
 
-  // Add the directory itself if missing
   const dirNorm = path.normalize(dir).toLowerCase();
   if (!existing.has(dirNorm)) newDirs.push(dir);
 
@@ -80,16 +75,65 @@ export function scanAndAddToIndex(dir: string): number {
   return added;
 }
 
-// ── Search ────────────────────────────────────────────────────────────────────
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeSearchText(value: string): string[] {
+  return normalizeSearchText(value).split(' ').filter(Boolean);
+}
+
+export function scoreDirectoryMatch(dirPath: string, query: string): number {
+  const baseName = path.basename(dirPath);
+  const normalizedBase = normalizeSearchText(baseName);
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (!normalizedBase || !normalizedQuery) return 0;
+  if (normalizedBase === normalizedQuery) return 1000;
+  if (normalizedBase.startsWith(normalizedQuery)) return 800;
+
+  const baseTokens = tokenizeSearchText(baseName);
+  const queryTokens = tokenizeSearchText(query);
+
+  if (queryTokens.length > 0 && queryTokens.every(token => baseTokens.some(base => base.startsWith(token)))) {
+    return 700;
+  }
+
+  if (normalizedBase.includes(normalizedQuery)) return 500;
+
+  if (queryTokens.length > 0 && queryTokens.every(token => normalizedBase.includes(token))) {
+    return 400;
+  }
+
+  return 0;
+}
+
+export function rankDirectoryMatches(dirPaths: string[], query: string, maxResults?: number): string[] {
+  const ranked = dirPaths
+    .map(dirPath => ({ dirPath, score: scoreDirectoryMatch(dirPath, query) }))
+    .filter(item => item.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+
+      const baseDiff = path.basename(a.dirPath).length - path.basename(b.dirPath).length;
+      if (baseDiff !== 0) return baseDiff;
+
+      return a.dirPath.localeCompare(b.dirPath);
+    })
+    .map(item => item.dirPath);
+
+  return typeof maxResults === 'number' ? ranked.slice(0, maxResults) : ranked;
+}
 
 export function searchIndex(name: string): string[] {
   const index = loadIndex();
   if (!index) return [];
-  const lower = name.toLowerCase();
-  return index.dirs.filter(d => path.basename(d).toLowerCase().startsWith(lower));
+  return rankDirectoryMatches(index.dirs, name);
 }
-
-// ── Build ─────────────────────────────────────────────────────────────────────
 
 export function buildIndex(
   onProgress?: (current: string, count: number) => void
@@ -117,13 +161,14 @@ function getRoots(): string[] {
   }
 
   const drives: string[] = [];
-  // Scan C: through Z:
   for (let c = 67; c <= 90; c++) {
     const drive = String.fromCharCode(c) + ':\\';
     try {
       fs.readdirSync(drive);
       drives.push(drive);
-    } catch { /* drive not available */ }
+    } catch {
+      // Drive not available.
+    }
   }
   return drives.length > 0 ? drives : ['C:\\'];
 }
@@ -137,7 +182,7 @@ function scanDir(
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
-    return; // permission denied
+    return;
   }
 
   for (const entry of entries) {

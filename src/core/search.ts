@@ -1,49 +1,66 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { searchIndex, indexExists, addDirsToIndex } from './index-manager';
+import { searchIndex, indexExists, addDirsToIndex, rankDirectoryMatches, scoreDirectoryMatch } from './index-manager';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '$RECYCLE.BIN', 'System Volume Information', 'Windows', 'WinSxS']);
 const MAX_RESULTS = 20;
-const MAX_DEPTH = 6;
+const PRIMARY_MAX_DEPTH = 6;
+const EXTENDED_MAX_DEPTH = 10;
 
 export function findDirectories(name: string): string[] {
-  // Use index when available — fast and complete
   if (indexExists()) {
     const results = searchIndex(name);
-    if (results.length > 0) return results;
-    // Index built but nothing found — fall through to disk search
+    if (results.length > 0) return results.slice(0, MAX_RESULTS);
   }
 
-  // Fallback: live disk search (limited depth)
   return searchDisk(name);
 }
 
 function searchDisk(name: string): string[] {
-  const results: string[] = [];
+  const primary = collectMatches(name, PRIMARY_MAX_DEPTH);
+  if (primary.length > 0) return primary;
+
+  return collectMatches(name, EXTENDED_MAX_DEPTH);
+}
+
+function collectMatches(name: string, maxDepth: number): string[] {
+  const matches: string[] = [];
   const visited: string[] = [];
-  const lowerName = name.toLowerCase();
-  const roots = new Set<string>([
-    os.homedir(),
-    path.dirname(os.homedir()), // e.g. C:\Users
-    path.parse(process.cwd()).root,
-  ]);
+  const roots = getSearchRoots();
 
   for (const root of roots) {
-    searchIn(root, lowerName, results, visited, 0);
-    if (results.length >= MAX_RESULTS) break;
+    searchIn(root, name, matches, visited, 0, maxDepth);
+    if (matches.length >= MAX_RESULTS) break;
   }
 
-  // Update index with all directories encountered during the scan
   if (visited.length > 0 && indexExists()) {
     addDirsToIndex(visited);
   }
 
-  return [...new Set(results)].slice(0, MAX_RESULTS);
+  return rankDirectoryMatches([...new Set(matches)], name, MAX_RESULTS);
 }
 
-function searchIn(dir: string, name: string, results: string[], visited: string[], depth: number): void {
-  if (depth > MAX_DEPTH || results.length >= MAX_RESULTS) return;
+function getSearchRoots(): string[] {
+  const roots = new Set<string>([
+    process.cwd(),
+    os.homedir(),
+    path.dirname(os.homedir()),
+    path.parse(process.cwd()).root,
+  ]);
+
+  return [...roots];
+}
+
+function searchIn(
+  dir: string,
+  name: string,
+  matches: string[],
+  visited: string[],
+  depth: number,
+  maxDepth: number
+): void {
+  if (depth > maxDepth || matches.length >= MAX_RESULTS) return;
 
   let entries: fs.Dirent[];
   try {
@@ -54,10 +71,15 @@ function searchIn(dir: string, name: string, results: string[], visited: string[
 
   for (const entry of entries) {
     if (!entry.isDirectory() || SKIP_DIRS.has(entry.name)) continue;
+
     const fullPath = path.join(dir, entry.name);
     visited.push(fullPath);
-    if (entry.name.toLowerCase().startsWith(name)) results.push(fullPath);
-    searchIn(fullPath, name, results, visited, depth + 1);
-    if (results.length >= MAX_RESULTS) return;
+
+    if (scoreDirectoryMatch(fullPath, name) > 0) {
+      matches.push(fullPath);
+    }
+
+    searchIn(fullPath, name, matches, visited, depth + 1, maxDepth);
+    if (matches.length >= MAX_RESULTS) return;
   }
 }
