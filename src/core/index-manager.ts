@@ -37,13 +37,56 @@ export function isDirInIndex(dirPath: string): boolean {
   return index.dirs.some(d => path.normalize(d).toLowerCase() === norm);
 }
 
+// ── Add dirs ──────────────────────────────────────────────────────────────────
+
+export function addDirsToIndex(newDirs: string[]): void {
+  const index = loadIndex();
+  if (!index) return;
+  const existing = new Set(index.dirs.map(d => path.normalize(d).toLowerCase()));
+  let added = false;
+  for (const d of newDirs) {
+    const norm = path.normalize(d).toLowerCase();
+    if (!existing.has(norm)) {
+      index.dirs.push(d);
+      existing.add(norm);
+      added = true;
+    }
+  }
+  if (added) fs.writeFileSync(INDEX_FILE, JSON.stringify(index), 'utf8');
+}
+
+export function scanAndAddToIndex(dir: string): number {
+  const index = loadIndex();
+  if (!index) return 0;
+  const existing = new Set(index.dirs.map(d => path.normalize(d).toLowerCase()));
+  const newDirs: string[] = [];
+
+  // Add the directory itself if missing
+  const dirNorm = path.normalize(dir).toLowerCase();
+  if (!existing.has(dirNorm)) newDirs.push(dir);
+
+  scanDir(dir, newDirs);
+
+  let added = 0;
+  for (const d of newDirs) {
+    const norm = path.normalize(d).toLowerCase();
+    if (!existing.has(norm)) {
+      index.dirs.push(d);
+      existing.add(norm);
+      added++;
+    }
+  }
+  if (added > 0) fs.writeFileSync(INDEX_FILE, JSON.stringify(index), 'utf8');
+  return added;
+}
+
 // ── Search ────────────────────────────────────────────────────────────────────
 
 export function searchIndex(name: string): string[] {
   const index = loadIndex();
   if (!index) return [];
   const lower = name.toLowerCase();
-  return index.dirs.filter(d => path.basename(d).toLowerCase() === lower);
+  return index.dirs.filter(d => path.basename(d).toLowerCase().startsWith(lower));
 }
 
 // ── Build ─────────────────────────────────────────────────────────────────────

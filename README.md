@@ -90,10 +90,15 @@ end
 ```powershell
 function ncd {
   & ncd.cmd @args
-  $selected = Get-Content "$env:TEMP\.ncd_path" -ErrorAction SilentlyContinue
-  if ($selected) { Set-Location $selected; Remove-Item "$env:TEMP\.ncd_path" }
+  $selected = Get-Content "$env:USERPROFILE\.ncd_last" -ErrorAction SilentlyContinue
+  if ($selected) { Set-Location $selected; Remove-Item "$env:USERPROFILE\.ncd_last" }
 }
 ```
+
+Run `ncd setup` to install the shell integration automatically.
+
+The full-screen TUI requires a real terminal with TTY support. Use Windows Terminal,
+PowerShell console, or `pwsh`. PowerShell ISE is not supported for the TUI.
 
 ---
 

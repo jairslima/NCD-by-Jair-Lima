@@ -51,45 +51,67 @@ function getNpmGlobalPaths(): { binDir: string; nodeModulesDir: string } | null 
   }
 }
 
+function appendIfMissing(profilePath: string, content: string): 'added' | 'already' | 'failed' {
+  try {
+    fs.mkdirSync(path.dirname(profilePath), { recursive: true });
+    const existing = fs.existsSync(profilePath) ? fs.readFileSync(profilePath, 'utf8') : '';
+    if (existing.includes(MARKER)) return 'already';
+    fs.appendFileSync(profilePath, content, 'utf8');
+    return 'added';
+  } catch {
+    return 'failed';
+  }
+}
+
 export function runSetup(): void {
   const homeDir = os.homedir();
-  console.log('NCD Setup — installing shell integration...\n');
+  console.log('NCD Setup - installing shell integration...\n');
 
-  // ── Bash ──────────────────────────────────────────────────────────────────
   const bashProfiles = [path.join(homeDir, '.bash_profile'), path.join(homeDir, '.bashrc')];
   let bashDone = false;
   for (const profile of bashProfiles) {
     try {
       const content = fs.existsSync(profile) ? fs.readFileSync(profile, 'utf8') : '';
       if (content.includes(MARKER)) {
-        console.log(`✓ Bash: already configured in ${profile}`);
+        console.log(`OK Bash: already configured in ${profile}`);
         bashDone = true;
         break;
       }
       fs.appendFileSync(profile, BASH_FUNCTION, 'utf8');
-      console.log(`✓ Bash: function added to ${profile}`);
+      console.log(`OK Bash: function added to ${profile}`);
       console.log(`  Activate now: source ${profile}`);
       bashDone = true;
       break;
-    } catch { continue; }
-  }
-  if (!bashDone) console.log('✗ Bash: could not write profile');
-
-  // ── PowerShell ────────────────────────────────────────────────────────────
-  const psProfilePath = path.join(homeDir, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1');
-  try {
-    fs.mkdirSync(path.dirname(psProfilePath), { recursive: true });
-    const psContent = fs.existsSync(psProfilePath) ? fs.readFileSync(psProfilePath, 'utf8') : '';
-    if (psContent.includes(MARKER)) {
-      console.log(`✓ PowerShell: already configured`);
-    } else {
-      fs.appendFileSync(psProfilePath, POWERSHELL_FUNCTION, 'utf8');
-      console.log(`✓ PowerShell: function added to ${psProfilePath}`);
-      console.log(`  Activate now: . $PROFILE`);
+    } catch {
+      continue;
     }
-  } catch { console.log('✗ PowerShell: could not write profile'); }
+  }
+  if (!bashDone) console.log('ERR Bash: could not write profile');
 
-  // ── CMD (ncd.cmd in npm global bin) ───────────────────────────────────────
+  const psProfilePaths = [
+    path.join(homeDir, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1'),
+    path.join(homeDir, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
+    path.join(homeDir, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShellISE_profile.ps1'),
+  ];
+  let psAdded = 0;
+  let psAlready = 0;
+  for (const psProfilePath of psProfilePaths) {
+    const result = appendIfMissing(psProfilePath, POWERSHELL_FUNCTION);
+    if (result === 'added') {
+      psAdded++;
+      console.log(`OK PowerShell: function added to ${psProfilePath}`);
+    } else if (result === 'already') {
+      psAlready++;
+      console.log(`OK PowerShell: already configured in ${psProfilePath}`);
+    }
+  }
+  if (psAdded === 0 && psAlready === 0) {
+    console.log('ERR PowerShell: could not write any profile');
+  } else {
+    console.log('  Activate now: restart the terminal or run . $PROFILE');
+    console.log('  Note: PowerShell ISE can load the function, but the full-screen TUI still requires a real terminal.');
+  }
+
   const npmPaths = getNpmGlobalPaths();
   if (npmPaths) {
     const { binDir, nodeModulesDir } = npmPaths;
@@ -97,12 +119,12 @@ export function runSetup(): void {
     try {
       const wrapper = buildCmdWrapper(nodeModulesDir);
       fs.writeFileSync(cmdPath, wrapper, 'utf8');
-      console.log(`✓ CMD: wrapper installed at ${cmdPath}`);
-    } catch (e) {
-      console.log(`✗ CMD: could not write ${cmdPath}`);
+      console.log(`OK CMD: wrapper installed at ${cmdPath}`);
+    } catch {
+      console.log(`ERR CMD: could not write ${cmdPath}`);
     }
   } else {
-    console.log('✗ CMD: could not detect npm global path');
+    console.log('ERR CMD: could not detect npm global path');
   }
 
   console.log('\nSetup complete! Restart your terminal or source your profile.');
