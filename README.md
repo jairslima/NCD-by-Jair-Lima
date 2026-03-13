@@ -1,17 +1,17 @@
 # NCD by Jair Lima
 
-A modern, cross-platform clone of the classic **Norton Change Directory (NCD)** utility — a visual, keyboard-driven directory tree navigator for the terminal.
+A modern, cross-platform clone of the classic Norton Change Directory (NCD) utility: a visual, keyboard-driven directory tree navigator for the terminal.
 
 ---
 
 ## Features
 
 - Visual directory tree with expand/collapse
-- Keyboard navigation (arrows, vim keys `j/k/h/l`)
-- Real-time search/filter by folder name
+- Keyboard navigation with arrows or `j/k/h/l`
+- Folder search with exact, prefix, token, and substring matching
 - PageUp / PageDown for fast scrolling
 - Cross-platform: Windows, Linux, macOS
-- Shell integration to `cd` into selected directory
+- Shell integration to `cd` into the selected directory
 
 ---
 
@@ -30,13 +30,21 @@ npm install -g .
 ## Usage
 
 ```bash
-# Navigate from current directory
+# Open the TUI from the current directory
 ncd
 
-# Navigate from a specific directory
+# Open the TUI from a specific path
 ncd /home/user
 ncd C:\Users
+
+# Search by folder name
+ncd claude
+ncd "visual studio"
 ```
+
+`ncd name` first searches the index and then falls back to a live disk scan when needed.
+Results are ranked so exact names come first, then prefix matches, token-prefix matches,
+and finally substring matches.
 
 ---
 
@@ -44,83 +52,101 @@ ncd C:\Users
 
 | Key | Action |
 |-----|--------|
-| `↑` / `k` | Move up |
-| `↓` / `j` | Move down |
-| `→` / `l` | Expand directory |
-| `←` / `h` | Collapse directory |
-| `Enter` / `Space` | Expand or select directory |
+| `Up` / `k` | Move up |
+| `Down` / `j` | Move down |
+| `Right` / `l` | Expand directory |
+| `Left` / `h` | Collapse directory |
+| `Enter` | Select directory / change directory |
+| `Space` | Expand or collapse directory |
 | `PageUp` | Scroll up 10 items |
 | `PageDown` | Scroll down 10 items |
 | `/` | Start search |
 | `Esc` | Cancel search |
 | `Backspace` | Delete search character |
+| `B` | Toggle bookmark |
+| `F` | Open favorites |
+| `H` | Open history |
+| `Tab` | Switch drive on Windows |
+| `F5` | Rebuild index |
 | `Q` | Quit |
 
 ---
 
-## Shell Integration (cd to selected directory)
+## Shell Integration
 
-To make `ncd` change your shell's working directory, add the function below to your shell config file.
+NCD cannot change the parent shell directory directly. It writes the selected path to
+`~/.ncd_last`, and the shell wrapper reads that file and runs `cd`.
 
-### Bash / Zsh (`~/.bashrc` or `~/.zshrc`)
+Run `ncd setup` to install shell integration automatically.
+
+### Bash / Zsh
 
 ```bash
 function ncd() {
   command ncd "$@"
-  local selected=$(cat /tmp/.ncd_path 2>/dev/null)
-  [ -n "$selected" ] && cd "$selected" && rm -f /tmp/.ncd_path
+  local selected=$(cat ~/.ncd_last 2>/dev/null)
+  if [ -n "$selected" ]; then
+    cd "$selected"
+    rm -f ~/.ncd_last
+  fi
 }
 ```
 
-### Fish (`~/.config/fish/config.fish`)
-
-```fish
-function ncd
-  command ncd $argv
-  set selected (cat /tmp/.ncd_path 2>/dev/null)
-  if test -n "$selected"
-    cd $selected
-    rm -f /tmp/.ncd_path
-  end
-end
-```
-
-### PowerShell (`$PROFILE`)
+### PowerShell
 
 ```powershell
 function ncd {
   & ncd.cmd @args
   $selected = Get-Content "$env:USERPROFILE\.ncd_last" -ErrorAction SilentlyContinue
-  if ($selected) { Set-Location $selected; Remove-Item "$env:USERPROFILE\.ncd_last" }
+  if ($selected) {
+    Set-Location $selected
+    Remove-Item "$env:USERPROFILE\.ncd_last" -ErrorAction SilentlyContinue
+  }
 }
 ```
 
-Run `ncd setup` to install the shell integration automatically.
+### CMD
 
-The full-screen TUI requires a real terminal with TTY support. Use Windows Terminal,
-PowerShell console, or `pwsh`. PowerShell ISE is not supported for the TUI.
+`ncd setup` also installs a custom `ncd.cmd` wrapper in the npm global bin directory.
+
+---
+
+## Terminal Support
+
+The full-screen TUI requires a real terminal with TTY support.
+
+Recommended:
+- Windows Terminal
+- PowerShell console
+- `pwsh`
+- Linux/macOS terminals
+
+Not supported for the TUI:
+- PowerShell ISE
+
+If NCD detects an unsupported host, it exits with a clear message instead of opening a broken screen.
 
 ---
 
 ## Development
 
 ```bash
-npm run dev          # Run directly with ts-node
-npm run build        # Compile TypeScript to dist/
-npm start            # Run compiled version
+npm run dev
+npm run build
+npm start
 ```
 
 ---
 
 ## Inspired by
 
-[Norton Change Directory (NCD)](https://en.wikipedia.org/wiki/Norton_Utilities) — a beloved utility from the DOS era by Peter Norton, that made navigating directory trees fast and visual.
+[Norton Change Directory (NCD)](https://en.wikipedia.org/wiki/Norton_Utilities), a DOS-era utility that made directory navigation fast and visual.
 
 ---
 
 ## Author
 
-**Jair Lima** — [github.com/jairslima](https://github.com/jairslima)
+Jair Lima - [github.com/jairslima](https://github.com/jairslima)
 
 ## License
 
