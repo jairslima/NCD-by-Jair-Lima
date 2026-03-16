@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node dist/tests/run.js",
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "postinstall": "node dist/postinstall.js 2>/dev/null || true"

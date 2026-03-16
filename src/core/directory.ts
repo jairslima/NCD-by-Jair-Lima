@@ -1,8 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { DirNode } from '../types';
-
-const SKIP_DIRS = new Set(['.git', 'node_modules', '.svn', '__pycache__', '$RECYCLE.BIN', 'System Volume Information']);
+import { shouldSkipDirectoryName } from './directory-rules';
 
 export function createNode(dirPath: string, level: number = 0): DirNode {
   const name = level === 0 ? dirPath : path.basename(dirPath);
@@ -20,7 +19,7 @@ export function checkHasKids(node: DirNode): boolean {
   if (node.hasKids !== null) return node.hasKids;
   try {
     const entries = fs.readdirSync(node.path, { withFileTypes: true });
-    node.hasKids = entries.some(e => e.isDirectory() && !SKIP_DIRS.has(e.name));
+    node.hasKids = entries.some(e => e.isDirectory() && !shouldSkipDirectoryName(e.name, { includeHidden: true }));
   } catch {
     node.hasKids = false;
   }
@@ -32,7 +31,7 @@ export function loadChildren(node: DirNode): void {
   try {
     const entries = fs.readdirSync(node.path, { withFileTypes: true });
     node.children = entries
-      .filter(e => e.isDirectory() && !SKIP_DIRS.has(e.name))
+      .filter(e => e.isDirectory() && !shouldSkipDirectoryName(e.name, { includeHidden: true }))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(e => createNode(path.join(node.path, e.name), node.level + 1));
     node.hasKids = node.children.length > 0;

@@ -2,9 +2,9 @@ import * as blessed from 'blessed';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { DirNode } from '../types';
+import { DirNode, KeypressInfo } from '../types';
 import { createNode, loadChildren, checkHasKids, flattenVisible, searchNodes } from '../core/directory';
-import { buildIndex } from '../core/index-manager';
+import { buildIndexAsync } from '../core/index-manager';
 import { loadBookmarks, toggleBookmark } from '../core/bookmarks';
 import { loadHistory } from '../core/history';
 import { goToPath } from '../core/navigation';
@@ -35,6 +35,21 @@ function formatLine(node: DirNode, isSelected: boolean, bookmarkedSet: Set<strin
   const star      = bookmarkedSet.has(node.path.toLowerCase()) ? '\u2605 ' : '';
   const [open, close] = getDirColor(node.path, bookmarkedSet, cwdPath);
   return `${open}${marker} ${indent}${icon} ${star}${node.name}${close}`;
+}
+
+function setSearchPrompt(
+  searchBox: blessed.Widgets.BoxElement,
+  searchMode: boolean,
+  searchQuery: string
+): void {
+  if (searchMode) {
+    searchBox.setContent(`  Search: ${searchQuery}_`);
+    searchBox.style.fg = 'yellow';
+    return;
+  }
+
+  searchBox.setContent('  Press / to search');
+  searchBox.style.fg = 'grey';
 }
 
 // ── Drive detection ───────────────────────────────────────────────────────────
@@ -77,6 +92,7 @@ export function runApp(startPath: string, highlightPath?: string): void {
   let selectedIndex         = 0;
   let searchQuery           = '';
   let searchMode            = false;
+  let rebuildInProgress     = false;
   let bookmarkedSet         = new Set(loadBookmarks().map(b => b.toLowerCase()));
 
   const screen = blessed.screen({ smartCSR: true, title: 'NCD', fullUnicode: true, output: process.stderr });
@@ -114,24 +130,25 @@ export function runApp(startPath: string, highlightPath?: string): void {
     headerBox.setContent(`  NCD - New Change Directory  |  ${driveLabels}`);
   }
 
+  function updatePathBar(): void {
+    const cur = flatNodes[selectedIndex];
+    pathBox.setContent('  Path: ' + (cur ? cur.path : ''));
+  }
+
+  function renderList(): void {
+    const items = flatNodes.map((node, index) => formatLine(node, index === selectedIndex, bookmarkedSet, cwdPath));
+    treeBox.setItems(items);
+    treeBox.select(selectedIndex);
+    treeBox.scrollTo(selectedIndex);
+  }
+
   function render() {
     flatNodes = searchMode && searchQuery ? searchNodes(root, searchQuery) : flattenVisible(root);
     if (selectedIndex >= flatNodes.length) selectedIndex = Math.max(0, flatNodes.length - 1);
 
-    treeBox.setItems(flatNodes.map((n, i) => formatLine(n, i === selectedIndex, bookmarkedSet, cwdPath)) as any);
-    treeBox.select(selectedIndex);
-    treeBox.scrollTo(selectedIndex);
-
-    const cur = flatNodes[selectedIndex];
-    pathBox.setContent('  Path: ' + (cur ? cur.path : ''));
-
-    if (searchMode) {
-      searchBox.setContent(`  Search: ${searchQuery}_`);
-      (searchBox.style as any).fg = 'yellow';
-    } else {
-      searchBox.setContent('  Press / to search');
-      (searchBox.style as any).fg = 'grey';
-    }
+    renderList();
+    updatePathBar();
+    setSearchPrompt(searchBox, searchMode, searchQuery);
 
     setStatus(`${selectedIndex + 1}/${flatNodes.length} dirs` +
       (bookmarkedSet.size > 0 ? `   \u2605 ${bookmarkedSet.size} bookmarks` : '') +
@@ -145,11 +162,8 @@ export function runApp(startPath: string, highlightPath?: string): void {
     const next = Math.max(0, Math.min(flatNodes.length - 1, selectedIndex + delta));
     if (next === selectedIndex) return;
     selectedIndex = next;
-    treeBox.setItems(flatNodes.map((n, i) => formatLine(n, i === selectedIndex, bookmarkedSet, cwdPath)) as any);
-    treeBox.select(selectedIndex);
-    treeBox.scrollTo(selectedIndex);
-    const cur = flatNodes[selectedIndex];
-    pathBox.setContent('  Path: ' + (cur ? cur.path : ''));
+    renderList();
+    updatePathBar();
     setStatus(`${selectedIndex + 1}/${flatNodes.length} dirs` + (bookmarkedSet.size > 0 ? `   \u2605 ${bookmarkedSet.size} bookmarks` : ''));
     screen.render();
   }
@@ -210,7 +224,7 @@ export function runApp(startPath: string, highlightPath?: string): void {
     if (searchMode && searchQuery.length > 0) { searchQuery = searchQuery.slice(0, -1); selectedIndex = 0; render(); }
   });
 
-  screen.on('keypress', (ch: string, key: any) => {
+  screen.on('keypress', (ch: string, key: KeypressInfo) => {
     if (searchMode && ch && ch.length === 1 && key && !key.ctrl && !key.meta) { searchQuery += ch; selectedIndex = 0; render(); }
   });
 
@@ -247,12 +261,29 @@ export function runApp(startPath: string, highlightPath?: string): void {
   });
 
   // Rebuild index (F5)
-  screen.key(['f5'], () => {
+  screen.key(['f5'], async () => {
+    if (rebuildInProgress) {
+      setStatus('  Rebuild already in progress...');
+      screen.render();
+      return;
+    }
+
+    rebuildInProgress = true;
     setStatus('  Rebuilding index...');
     screen.render();
-    const count = buildIndex((_, n) => { setStatus(`  Rebuilding index... ${n} dirs`); screen.render(); });
-    setStatus(`  Index rebuilt: ${count} directories`);
-    render();
+    try {
+      const count = await buildIndexAsync((_, n) => {
+        setStatus(`  Rebuilding index... ${n} dirs`);
+        screen.render();
+      });
+      setStatus(`  Index rebuilt: ${count} directories`);
+      render();
+    } catch {
+      setStatus('  Failed to rebuild index');
+      screen.render();
+    } finally {
+      rebuildInProgress = false;
+    }
   });
 
   screen.key(['q', 'Q', 'C-c'], () => { screen.destroy(); process.exit(0); });

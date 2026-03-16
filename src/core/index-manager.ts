@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { shouldSkipDirectoryName } from './directory-rules';
+import { compactRoots } from './root-utils';
 
 export const INDEX_FILE = path.join(os.homedir(), '.ncd_index.json');
 
@@ -10,11 +12,12 @@ interface NcdIndex {
   dirs: string[];
 }
 
-const SKIP_DIRS = new Set([
-  '.git', 'node_modules', '$RECYCLE.BIN', 'System Volume Information',
-  'WinSxS', 'SoftwareDistribution', 'Prefetch', 'Logs',
-  '__pycache__', '.svn', 'vendor', 'Temp', 'temp',
-]);
+interface ScanFrame {
+  dir: string;
+  depth: number;
+}
+
+const ASYNC_SCAN_BATCH_SIZE = 250;
 
 export function indexExists(): boolean {
   return fs.existsSync(INDEX_FILE);
@@ -145,6 +148,25 @@ export function buildIndex(
     scanDir(root, dirs, onProgress);
   }
 
+  writeIndex(dirs);
+  return dirs.length;
+}
+
+export async function buildIndexAsync(
+  onProgress?: (current: string, count: number) => void
+): Promise<number> {
+  const dirs: string[] = [];
+  const roots = getRoots();
+
+  for (const root of roots) {
+    await scanDirAsync(root, dirs, onProgress);
+  }
+
+  writeIndex(dirs);
+  return dirs.length;
+}
+
+function writeIndex(dirs: string[]): void {
   const index: NcdIndex = {
     version: 1,
     builtAt: new Date().toISOString(),
@@ -152,12 +174,11 @@ export function buildIndex(
   };
 
   fs.writeFileSync(INDEX_FILE, JSON.stringify(index), 'utf8');
-  return dirs.length;
 }
 
 function getRoots(): string[] {
   if (process.platform !== 'win32') {
-    return [os.homedir(), '/'];
+    return compactRoots([os.homedir(), '/']);
   }
 
   const drives: string[] = [];
@@ -170,7 +191,7 @@ function getRoots(): string[] {
       // Drive not available.
     }
   }
-  return drives.length > 0 ? drives : ['C:\\'];
+  return compactRoots(drives.length > 0 ? drives : ['C:\\']);
 }
 
 function scanDir(
@@ -187,8 +208,7 @@ function scanDir(
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    if (SKIP_DIRS.has(entry.name)) continue;
-    if (entry.name.startsWith('.') && entry.name !== '.claude') continue;
+    if (shouldSkipDirectoryName(entry.name)) continue;
 
     const fullPath = path.join(dir, entry.name);
     results.push(fullPath);
@@ -198,5 +218,46 @@ function scanDir(
     }
 
     scanDir(fullPath, results, onProgress);
+  }
+}
+
+async function scanDirAsync(
+  rootDir: string,
+  results: string[],
+  onProgress?: (current: string, count: number) => void
+): Promise<void> {
+  const pending: ScanFrame[] = [{ dir: rootDir, depth: 0 }];
+  let processedSinceYield = 0;
+
+  while (pending.length > 0) {
+    const frame = pending.pop();
+    if (!frame) continue;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(frame.dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      if (!entry.isDirectory()) continue;
+      if (shouldSkipDirectoryName(entry.name)) continue;
+
+      const fullPath = path.join(frame.dir, entry.name);
+      results.push(fullPath);
+      pending.push({ dir: fullPath, depth: frame.depth + 1 });
+
+      if (onProgress && results.length % 200 === 0) {
+        onProgress(fullPath, results.length);
+      }
+
+      processedSinceYield++;
+      if (processedSinceYield >= ASYNC_SCAN_BATCH_SIZE) {
+        processedSinceYield = 0;
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+    }
   }
 }

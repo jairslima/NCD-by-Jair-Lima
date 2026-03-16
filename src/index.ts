@@ -4,8 +4,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { runApp, runPicker } from './ui/app';
 import { runSetup } from './setup';
-import { findDirectories } from './core/search';
-import { indexExists, isDirInIndex, buildIndex, scanAndAddToIndex } from './core/index-manager';
+import { findDirectoriesAsync } from './core/search';
+import { indexExists, isDirInIndex, buildIndexAsync, scanAndAddToIndex } from './core/index-manager';
 import { goToPath } from './core/navigation';
 
 function isInteractiveTerminalSupported(): boolean {
@@ -44,7 +44,7 @@ program
 program
   .command('go [directory...]', { isDefault: true })
   .description('Open directory navigator')
-  .action((words: string[] = []) => {
+  .action(async (words: string[] = []) => {
     const directory = words.length > 0 ? words.join(' ') : process.cwd();
 
     // ── Case 1: no argument — open full drive tree, highlight current dir ────
@@ -58,7 +58,7 @@ program
 
       if (!indexExists()) {
         process.stderr.write('Building index (first run)...\n');
-        const count = buildIndex((_, n) => {
+        const count = await buildIndexAsync((_, n) => {
           process.stderr.write(`  Scanning... ${n} dirs found\r`);
         });
         process.stderr.write(`\n  Index built: ${count} directories\n\n`);
@@ -86,7 +86,7 @@ program
 
     // ── Case 3: argument is a name — search index (or disk) ──────────────────
     process.stderr.write(`Searching for "${directory}"...\n`);
-    const matches = findDirectories(directory);
+    const matches = await findDirectoriesAsync(directory);
 
     if (matches.length === 0) {
       process.stderr.write(`\nNCD by Jair Lima\nPasta nao encontrada: "${directory}"\n`);

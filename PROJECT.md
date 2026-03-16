@@ -27,14 +27,19 @@ NCD/
 |-- src/
 |   |-- index.ts              # Ponto de entrada e roteamento de comandos
 |   |-- setup.ts              # Instalacao da integracao com shells
+|   |-- shell-integration.ts  # Wrappers e helpers compartilhados de shell/CMD
 |   |-- types.ts              # Tipos compartilhados
 |   |-- core/
+|   |   |-- directory-rules.ts# Regras compartilhadas de visibilidade/exclusao
+|   |   |-- root-utils.ts     # Compactacao de roots para evitar scans redundantes
 |   |   |-- directory.ts      # Criacao/carregamento de nos de diretorio
 |   |   |-- index-manager.ts  # Indice JSON de diretorios (~/.ncd_index.json)
 |   |   |-- search.ts         # Busca no indice + varredura fisica de fallback
 |   |   |-- navigation.ts     # Grava ~/.ncd_last e encerra
 |   |   |-- bookmarks.ts      # Favoritos (~/.ncd_bookmarks.json)
 |   |   `-- history.ts        # Historico (~/.ncd_history.json)
+|   |-- tests/
+|   |   `-- run.ts            # Regressao basica de ranking e regras de diretorio
 |   `-- ui/
 |       `-- app.ts            # TUI principal + picker de ambiguidade
 |-- dist/                     # Saida do build
@@ -60,6 +65,7 @@ NCD/
 
 ```bash
 npm run build
+npm test
 npm run dev
 ncd
 ncd nome
@@ -156,7 +162,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 
 ---
 
-## Estado atual (2026-03-13)
+## Estado atual (2026-03-16)
 
 - Funcional e publicado no npm como `ncd-by-jair-lima`
 - Integracao com CMD, PowerShell e Bash via `ncd setup`
@@ -164,6 +170,15 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - Bookmarks, historico e picker de ambiguidade implementados
 - Host sem TTY ou PowerShell ISE recebe erro claro em vez de TUI quebrada
 - Busca por nome agora aceita exato, prefixo, tokens e substring
+- Regras de exclusao de diretorios foram centralizadas em `src/core/directory-rules.ts`
+- Existe uma base inicial de testes automatizados cobrindo ranking e filtros de diretorio
+- `tsconfig.json` agora exige `noImplicitAny`, mas o projeto ainda nao esta em `strict: true`
+- `setup` e `postinstall` agora compartilham a mesma geracao de wrapper CMD via `src/shell-integration.ts`
+- Indexacao e busca fisica agora compactam roots sobrepostas antes de varrer o disco
+- O rebuild interativo do indice e o primeiro build interativo agora usam varredura assincrona por lotes
+- O fallback de busca por nome no CLI agora usa varredura assincrona por lotes quando precisa ir ao disco
+- Em 2026-03-16, neste terminal de desenvolvimento, o TUI nao esta conseguindo efetivar a mudanca de pasta no shell atual; tratar a integracao local como nao validada aqui
+- Causa observada neste ambiente: `Get-Command ncd` resolve para o shim `ncd.ps1` do npm, nao para a funcao `ncd` carregada via perfil do PowerShell
 
 ### Correcoes recentes
 
@@ -172,6 +187,13 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - CWD nao indexada usa `scanAndAddToIndex` em vez de rebuild completo
 - Mensagem de "nao encontrado" mostra o nome buscado
 - Busca por nome foi ampliada com ranking e fallback mais profundo
+- `directory.ts`, `search.ts` e `index-manager.ts` agora compartilham a mesma regra base de exclusao
+- A TUI continua podendo exibir diretorios ocultos, mas indexacao e busca fisica seguem regras mais conservadoras
+- O projeto passou a ter comando `npm test` para regressao basica
+- `postinstall.ts` deixou de usar a estrategia antiga baseada em captura de `stdout` e agora segue o fluxo oficial de `.ncd_last`
+- `root-utils.ts` elimina scans redundantes quando `cwd`, `home`, pai do `home` e raiz se sobrepoem
+- `buildIndexAsync` reduz travamentos perceptiveis durante `F5` e no primeiro uso interativo
+- `findDirectoriesAsync` reduz bloqueio no fluxo `ncd <nome>` quando o indice nao resolve a consulta
 
 ---
 
@@ -180,3 +202,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - O indice pode ficar desatualizado se pastas forem removidas
 - A busca ainda nao e fuzzy; ela esta melhor que `startsWith`, mas ainda nao corrige erros de digitacao
 - A varredura fisica profunda ainda pode ser custosa em maquinas com muitos arquivos
+- A indexacao e boa parte da busca continuam sincronos; em discos grandes a UX pode travar temporariamente
+- Falta ampliar os testes para cobrirem navegacao, persistencia de bookmarks/historico e cenarios de erro de integracao
+- O TUI nao foi validado com sucesso neste terminal especifico em 2026-03-16: a selecao visual ocorre, mas a mudanca de pasta nao surte efeito no shell hospedeiro observado
+- Neste ambiente, o problema nao parece ser da TUI em si, mas da integracao de shell ausente na sessao atual do PowerShell

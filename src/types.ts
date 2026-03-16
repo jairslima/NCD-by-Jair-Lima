@@ -6,3 +6,8 @@ export interface DirNode {
   level: number;
   hasKids: boolean | null;    // null = unknown
 }
+
+export interface KeypressInfo {
+  ctrl?: boolean;
+  meta?: boolean;
+}

@@ -105,6 +105,10 @@ function ncd {
 }
 ```
 
+If `Get-Command ncd` points to `ncd.ps1`, you are still using the npm shim instead of the
+profile function. In that case, `ncd` can open the TUI, but it will not change the current
+PowerShell session directory. Run `ncd setup` and restart the terminal, or run `. $PROFILE`.
+
 ### CMD
 
 `ncd setup` also installs a custom `ncd.cmd` wrapper in the npm global bin directory.
@@ -126,6 +130,15 @@ Not supported for the TUI:
 
 If NCD detects an unsupported host, it exits with a clear message instead of opening a broken screen.
 
+## Troubleshooting
+
+If the TUI opens but the current shell does not change directories after selection:
+
+- Run `ncd setup`
+- Restart the terminal or run `. $PROFILE`
+- In PowerShell, verify `Get-Command ncd`
+- If it resolves to `ncd.ps1` instead of a function, the shell integration is not active in that session
+
 ---
 
 ## Development
@@ -133,6 +146,7 @@ If NCD detects an unsupported host, it exits with a clear message instead of ope
 ```bash
 npm run dev
 npm run build
+npm test
 npm start
 ```
 
