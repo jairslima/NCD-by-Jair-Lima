@@ -5,7 +5,7 @@ import { execSync } from 'child_process';
 export const SHELL_MARKER = '# NCD - New Change Directory (by Jair Lima)';
 
 export const BASH_FUNCTION = `
-# NCD - New Change Directory (by Jair Lima)
+${SHELL_MARKER}
 function ncd() {
   command ncd "$@"
   local NCD_PATH=$(cat ~/.ncd_last 2>/dev/null)
@@ -17,11 +17,15 @@ function ncd() {
 `;
 
 export const POWERSHELL_FUNCTION = `
-# NCD - New Change Directory (by Jair Lima)
+${SHELL_MARKER}
 function ncd {
-  & ncd.cmd @args
-  $p = Get-Content "$env:USERPROFILE\\.ncd_last" -ErrorAction SilentlyContinue
-  if ($p) { Set-Location $p; Remove-Item "$env:USERPROFILE\\.ncd_last" -ErrorAction SilentlyContinue }
+  if (Get-Command ncd.ps1 -ErrorAction SilentlyContinue) {
+    & ncd.ps1 @args
+  } else {
+    & (Get-Command ncd -CommandType Application) @args
+  }
+  $p = Get-Content "$HOME\\.ncd_last" -ErrorAction SilentlyContinue
+  if ($p) { Set-Location $p; Remove-Item "$HOME\\.ncd_last" -ErrorAction SilentlyContinue }
 }
 `;
 
@@ -32,11 +36,10 @@ export function buildCmdWrapper(nodeModulesPath: string): string {
   return `@echo off
 :: NCD - New Change Directory (by Jair Lima)
 node "${indexJs}" %*
-if exist "%USERPROFILE%\\.ncd_last" (
-  set /p NCD_PATH=<"%USERPROFILE%\\.ncd_last"
-  del "%USERPROFILE%\\.ncd_last"
-  cd /d "%NCD_PATH%"
-)
+if not exist "%USERPROFILE%\\.ncd_last" goto :eof
+set /p NCD_PATH=<"%USERPROFILE%\\.ncd_last"
+del "%USERPROFILE%\\.ncd_last"
+cd /d "%NCD_PATH%"
 `;
 }
 
@@ -51,12 +54,23 @@ export function getNpmGlobalPaths(): { binDir: string; nodeModulesDir: string } 
   }
 }
 
-export function appendIfMissing(profilePath: string, content: string): 'added' | 'already' | 'failed' {
+export function appendIfMissing(profilePath: string, content: string): 'added' | 'already' | 'failed' | 'updated' {
   try {
     fs.mkdirSync(path.dirname(profilePath), { recursive: true });
     const existing = fs.existsSync(profilePath) ? fs.readFileSync(profilePath, 'utf8') : '';
-    if (existing.includes(SHELL_MARKER)) return 'already';
-    fs.appendFileSync(profilePath, content, 'utf8');
+    
+    const blockRegex = new RegExp(SHELL_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s\\S]*?\\n}', 'g');
+    
+    if (existing.includes(SHELL_MARKER)) {
+      const updated = existing.replace(blockRegex, content.trim());
+      if (updated !== existing) {
+        fs.writeFileSync(profilePath, updated, 'utf8');
+        return 'updated';
+      }
+      return 'already';
+    }
+    
+    fs.appendFileSync(profilePath, '\n' + content.trim() + '\n', 'utf8');
     return 'added';
   } catch {
     return 'failed';

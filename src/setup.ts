@@ -7,7 +7,6 @@ import {
   BASH_FUNCTION,
   installCmdWrapper,
   POWERSHELL_FUNCTION,
-  SHELL_MARKER,
 } from './shell-integration';
 
 export function runSetup(): void {
@@ -17,20 +16,16 @@ export function runSetup(): void {
   const bashProfiles = [path.join(homeDir, '.bash_profile'), path.join(homeDir, '.bashrc')];
   let bashDone = false;
   for (const profile of bashProfiles) {
-    try {
-      const content = fs.existsSync(profile) ? fs.readFileSync(profile, 'utf8') : '';
-      if (content.includes(SHELL_MARKER)) {
-        console.log(`OK Bash: already configured in ${profile}`);
-        bashDone = true;
-        break;
-      }
-      fs.appendFileSync(profile, BASH_FUNCTION, 'utf8');
-      console.log(`OK Bash: function added to ${profile}`);
+    const result = appendIfMissing(profile, BASH_FUNCTION);
+    if (result === 'added' || result === 'updated') {
+      console.log(`OK Bash: function ${result} in ${profile}`);
       console.log(`  Activate now: source ${profile}`);
       bashDone = true;
       break;
-    } catch {
-      continue;
+    } else if (result === 'already') {
+      console.log(`OK Bash: already configured in ${profile}`);
+      bashDone = true;
+      break;
     }
   }
   if (!bashDone) console.log('ERR Bash: could not write profile');
@@ -44,9 +39,9 @@ export function runSetup(): void {
   let psAlready = 0;
   for (const psProfilePath of psProfilePaths) {
     const result = appendIfMissing(psProfilePath, POWERSHELL_FUNCTION);
-    if (result === 'added') {
+    if (result === 'added' || result === 'updated') {
       psAdded++;
-      console.log(`OK PowerShell: function added to ${psProfilePath}`);
+      console.log(`OK PowerShell: function ${result} in ${psProfilePath}`);
     } else if (result === 'already') {
       psAlready++;
       console.log(`OK PowerShell: already configured in ${psProfilePath}`);

@@ -194,6 +194,9 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - `buildIndexAsync` reduz travamentos perceptiveis durante `F5` e no primeiro uso interativo
 - `findDirectoriesAsync` reduz bloqueio no fluxo `ncd <nome>` quando o indice nao resolve a consulta
 - Wrapper `ncd.cmd` corrigido: apos o node encerrar, le `%USERPROFILE%\.ncd_last` e executa `cd /d` para efetivar a mudanca de pasta no CMD
+- (18/03/2026) Refatoração da integração de shell (PowerShell e CMD): corrigido o conflito onde o wrapper CMD consumia o arquivo `.ncd_last` antes de retornar ao shell pai, gerando o erro de sintaxe.
+- (18/03/2026) O comando `ncd setup` foi aprimorado para atualizar (via regex) o conteúdo das funções no `PROFILE` do PowerShell e Bash, em vez de apenas ignorar caso a tag já existisse.
+- (18/03/2026) Criação do arquivo `GEMINI.md` para documentar o resumo técnico e facilitar a continuidade por outras IAs.
 
 ---
 
