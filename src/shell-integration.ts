@@ -33,8 +33,9 @@ export function buildCmdWrapper(nodeModulesPath: string): string {
 :: NCD - New Change Directory (by Jair Lima)
 node "${indexJs}" %*
 if exist "%USERPROFILE%\\.ncd_last" (
-  for /f "usebackq delims=" %%i in ("%USERPROFILE%\\.ncd_last") do cd /d "%%i"
-  del /f /q "%USERPROFILE%\\.ncd_last" >nul 2>&1
+  set /p NCD_PATH=<"%USERPROFILE%\\.ncd_last"
+  del "%USERPROFILE%\\.ncd_last"
+  cd /d "%NCD_PATH%"
 )
 `;
 }

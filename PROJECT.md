@@ -162,7 +162,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 
 ---
 
-## Estado atual (2026-03-16)
+## Estado atual (2026-03-18)
 
 - Funcional e publicado no npm como `ncd-by-jair-lima`
 - Integracao com CMD, PowerShell e Bash via `ncd setup`
@@ -177,8 +177,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - Indexacao e busca fisica agora compactam roots sobrepostas antes de varrer o disco
 - O rebuild interativo do indice e o primeiro build interativo agora usam varredura assincrona por lotes
 - O fallback de busca por nome no CLI agora usa varredura assincrona por lotes quando precisa ir ao disco
-- Em 2026-03-16, neste terminal de desenvolvimento, o TUI nao esta conseguindo efetivar a mudanca de pasta no shell atual; tratar a integracao local como nao validada aqui
-- Causa observada neste ambiente: `Get-Command ncd` resolve para o shim `ncd.ps1` do npm, nao para a funcao `ncd` carregada via perfil do PowerShell
+- Wrapper CMD corrigido em 2026-03-18: agora le `.ncd_last` e executa `cd /d` apos rodar o node
 
 ### Correcoes recentes
 
@@ -194,6 +193,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - `root-utils.ts` elimina scans redundantes quando `cwd`, `home`, pai do `home` e raiz se sobrepoem
 - `buildIndexAsync` reduz travamentos perceptiveis durante `F5` e no primeiro uso interativo
 - `findDirectoriesAsync` reduz bloqueio no fluxo `ncd <nome>` quando o indice nao resolve a consulta
+- Wrapper `ncd.cmd` corrigido: apos o node encerrar, le `%USERPROFILE%\.ncd_last` e executa `cd /d` para efetivar a mudanca de pasta no CMD
 
 ---
 
@@ -204,5 +204,4 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - A varredura fisica profunda ainda pode ser custosa em maquinas com muitos arquivos
 - A indexacao e boa parte da busca continuam sincronos; em discos grandes a UX pode travar temporariamente
 - Falta ampliar os testes para cobrirem navegacao, persistencia de bookmarks/historico e cenarios de erro de integracao
-- O TUI nao foi validado com sucesso neste terminal especifico em 2026-03-16: a selecao visual ocorre, mas a mudanca de pasta nao surte efeito no shell hospedeiro observado
-- Neste ambiente, o problema nao parece ser da TUI em si, mas da integracao de shell ausente na sessao atual do PowerShell
+- Integracao CMD pendente de validacao pelo usuario em terminal real apos correcao do wrapper em 2026-03-18

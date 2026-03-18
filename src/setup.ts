@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execSync } from 'child_process';
 import {
   appendIfMissing,
   BASH_FUNCTION,
@@ -57,6 +58,20 @@ export function runSetup(): void {
     console.log('  Activate now: restart the terminal or run . $PROFILE');
     console.log('  Note: PowerShell ISE can load the function, but the full-screen TUI still requires a real terminal.');
     console.log('  If "Get-Command ncd" still points to ncd.ps1, the profile function is not loaded in the current session.');
+  }
+
+  // Fix execution policy for CurrentUser so the profile can load
+  if (process.platform === 'win32') {
+    try {
+      execSync(
+        'powershell.exe -NoProfile -Command "Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force"',
+        { stdio: 'pipe' }
+      );
+      console.log('OK ExecutionPolicy: RemoteSigned set for CurrentUser (profile will load on next terminal)');
+    } catch {
+      console.log('WARN ExecutionPolicy: could not set automatically. Run manually:');
+      console.log('  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force');
+    }
   }
 
   try {
