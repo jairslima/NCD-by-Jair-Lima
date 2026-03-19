@@ -162,7 +162,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 
 ---
 
-## Estado atual (2026-03-18)
+## Estado atual (2026-03-19)
 
 - Funcional e publicado no npm como `ncd-by-jair-lima`
 - Integracao com CMD, PowerShell e Bash via `ncd setup`
@@ -197,6 +197,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - (18/03/2026) Refatoração da integração de shell (PowerShell e CMD): corrigido o conflito onde o wrapper CMD consumia o arquivo `.ncd_last` antes de retornar ao shell pai, gerando o erro de sintaxe.
 - (18/03/2026) O comando `ncd setup` foi aprimorado para atualizar (via regex) o conteúdo das funções no `PROFILE` do PowerShell e Bash, em vez de apenas ignorar caso a tag já existisse.
 - (18/03/2026) Criação do arquivo `GEMINI.md` para documentar o resumo técnico e facilitar a continuidade por outras IAs.
+- (19/03/2026) Picker de ambiguidade/favoritos/histórico agora exibe pastas com grupos de cores: ocultas (azul), AppData (amarelo), pastas do usuário (branco), sistema/outras (cinza).
 
 ---
 

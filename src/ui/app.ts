@@ -299,6 +299,28 @@ export function runApp(startPath: string, highlightPath?: string): void {
   treeBox.focus();
 }
 
+// ── Picker color classification ───────────────────────────────────────────────
+function getPickerLineColor(fullPath: string): [string, string] {
+  const home  = os.homedir().toLowerCase();
+  const lower = fullPath.toLowerCase();
+  const name  = path.basename(lower);
+
+  // Dot/hidden folders → blue (dim)
+  if (name.startsWith('.')) return ['{blue-fg}', '{/blue-fg}'];
+
+  // AppData → yellow (semi-system)
+  const appData = path.join(home, 'appdata');
+  if (lower.startsWith(appData) || lower.includes('\\appdata\\') || lower.includes('/appdata/')) {
+    return ['{yellow-fg}', '{/yellow-fg}'];
+  }
+
+  // Under user home → white (default, no tag)
+  if (lower.startsWith(home)) return ['', ''];
+
+  // System / unknown → grey
+  return ['{grey-fg}', '{/grey-fg}'];
+}
+
 // ── Picker (ambiguity / favorites / history) ──────────────────────────────────
 export function runPicker(matches: string[], title: string = 'Select'): void {
   const screen = blessed.screen({ smartCSR: true, title: `NCD - ${title}`, fullUnicode: true, output: process.stderr });
@@ -313,7 +335,11 @@ export function runPicker(matches: string[], title: string = 'Select'): void {
   const list    = blessed.list({
     top: 1, left: 0, width: '100%', bottom: 3,
     scrollable: true, keys: false, mouse: false,
-    items: matches.map(m => `  ${path.basename(m)}  \u2192  ${path.dirname(m)}`),
+    tags: true,
+    items: matches.map(m => {
+      const [open, close] = getPickerLineColor(m);
+      return `${open}  ${path.basename(m)}  \u2192  ${path.dirname(m)}${close}`;
+    }),
     style: { fg: 'white', bg: 'black', selected: { fg: 'black', bg: 'green', bold: true } },
   });
   const pathBar = blessed.box({ bottom: 2, left: 0, width: '100%', height: 1, content: `  Path: ${matches[0]}`, style: { fg: 'white', bg: 'blue' } });
