@@ -317,8 +317,9 @@ function getPickerLineColor(fullPath: string): [string, string] {
   // Under user home → white (default, no tag)
   if (lower.startsWith(home)) return ['', ''];
 
-  // System / unknown → grey
-  return ['{grey-fg}', '{/grey-fg}'];
+  // System / unknown → light grey (plain 'grey' maps to ANSI bright-black,
+  // which renders nearly black on dark terminal themes)
+  return ['{lightgrey-fg}', '{/lightgrey-fg}'];
 }
 
 // ── Picker (ambiguity / favorites / history) ──────────────────────────────────

@@ -198,6 +198,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - (18/03/2026) O comando `ncd setup` foi aprimorado para atualizar (via regex) o conteúdo das funções no `PROFILE` do PowerShell e Bash, em vez de apenas ignorar caso a tag já existisse.
 - (18/03/2026) Criação do arquivo `GEMINI.md` para documentar o resumo técnico e facilitar a continuidade por outras IAs.
 - (19/03/2026) Picker de ambiguidade/favoritos/histórico agora exibe pastas com grupos de cores: ocultas (azul), AppData (amarelo), pastas do usuário (branco), sistema/outras (cinza).
+- (23/07/2026) Corrigido bug de contraste em `getPickerLineColor` (`src/ui/app.ts`): a categoria "sistema/outras" usava a cor `grey`, que no blessed mapeia para o índice ANSI 8 (bright-black), renderizando quase preto sobre o fundo preto da lista em temas escuros de terminal. Trocado para `lightgrey` (índice ANSI 7), legível.
 
 ---
 
@@ -209,3 +210,4 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - A indexacao e boa parte da busca continuam sincronos; em discos grandes a UX pode travar temporariamente
 - Falta ampliar os testes para cobrirem navegacao, persistencia de bookmarks/historico e cenarios de erro de integracao
 - Integracao CMD pendente de validacao pelo usuario em terminal real apos correcao do wrapper em 2026-03-18
+- Teste `npm test` tem uma falha pre-existente e nao relacionada, sobre `cd /d "%%i"` no wrapper CMD (`shell-integration.ts`) — nao investigada nesta sessao

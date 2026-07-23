@@ -1,10 +1,10 @@
 {
   "name": "ncd-by-jair-lima",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "NCD - New Change Directory. Visual directory tree navigator inspired by Norton's classic NCD utility.",
   "main": "dist/index.js",
   "bin": {
-    "ncd": "./dist/index.js"
+    "ncd": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -13,7 +13,14 @@
     "start": "node dist/index.js",
     "postinstall": "node dist/postinstall.js 2>/dev/null || true"
   },
-  "keywords": ["ncd", "cli", "directory", "navigator", "tui", "norton"],
+  "keywords": [
+    "ncd",
+    "cli",
+    "directory",
+    "navigator",
+    "tui",
+    "norton"
+  ],
   "author": "Jair Lima",
   "license": "MIT",
   "dependencies": {
