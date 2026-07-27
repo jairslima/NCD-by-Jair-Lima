@@ -8,6 +8,7 @@ import { buildIndexAsync } from '../core/index-manager';
 import { loadBookmarks, toggleBookmark } from '../core/bookmarks';
 import { loadHistory } from '../core/history';
 import { goToPath } from '../core/navigation';
+import { getLastSelection, saveLastSelection } from '../core/last-selection';
 
 // ── Color scheme ──────────────────────────────────────────────────────────────
 const SYSTEM_DIR_NAMES = new Set([
@@ -323,7 +324,7 @@ function getPickerLineColor(fullPath: string): [string, string] {
 }
 
 // ── Picker (ambiguity / favorites / history) ──────────────────────────────────
-export function runPicker(matches: string[], title: string = 'Select'): void {
+export function runPicker(matches: string[], title: string = 'Select', query?: string): void {
   const screen = blessed.screen({ smartCSR: true, title: `NCD - ${title}`, fullUnicode: true, output: process.stderr });
 
   const firstName = path.basename(matches[0]);
@@ -364,9 +365,22 @@ export function runPicker(matches: string[], title: string = 'Select'): void {
 
   screen.key(['up',   'k'], () => { if (idx > 0) updateSelection(idx - 1); });
   screen.key(['down', 'j'], () => { if (idx < matches.length - 1) updateSelection(idx + 1); });
-  screen.key(['enter'],     () => { screen.destroy(); goToPath(matches[idx]); });
+  screen.key(['enter'],     () => {
+    screen.destroy();
+    if (query) saveLastSelection(query, matches[idx]);
+    goToPath(matches[idx]);
+  });
   screen.key(['escape', 'q', 'Q', 'C-c'], () => { screen.destroy(); process.exit(0); });
 
-  updateSelection(0);
+  let initialIdx = 0;
+  if (query) {
+    const lastPath = getLastSelection(query);
+    if (lastPath) {
+      const found = matches.findIndex(m => m.toLowerCase() === lastPath.toLowerCase());
+      if (found !== -1) initialIdx = found;
+    }
+  }
+
+  updateSelection(initialIdx);
   list.focus();
 }

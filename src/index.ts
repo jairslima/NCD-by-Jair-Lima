@@ -34,7 +34,7 @@ function printInteractiveHostError(): never {
 program
   .name('ncd')
   .description('NCD - New Change Directory. Visual directory navigator inspired by Norton NCD.')
-  .version('1.0.0');
+  .version('1.1.0');
 
 program
   .command('setup')
@@ -103,7 +103,7 @@ program
       printInteractiveHostError();
     }
 
-    runPicker(matches);
+    runPicker(matches, 'Select', directory);
   });
 
 program.parse();

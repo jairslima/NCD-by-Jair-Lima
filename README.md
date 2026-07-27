@@ -46,6 +46,11 @@ ncd "visual studio"
 Results are ranked so exact names come first, then prefix matches, token-prefix matches,
 and finally substring matches.
 
+When a search matches more than one directory, NCD opens a picker. The picker remembers
+the last directory you selected for that exact search term (stored in
+`~/.ncd_last_selection.json`) and pre-selects it the next time you run the same search,
+instead of always starting on the first result.
+
 ---
 
 ## Keyboard Shortcuts

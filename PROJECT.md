@@ -37,7 +37,8 @@ NCD/
 |   |   |-- search.ts         # Busca no indice + varredura fisica de fallback
 |   |   |-- navigation.ts     # Grava ~/.ncd_last e encerra
 |   |   |-- bookmarks.ts      # Favoritos (~/.ncd_bookmarks.json)
-|   |   `-- history.ts        # Historico (~/.ncd_history.json)
+|   |   |-- history.ts        # Historico (~/.ncd_history.json)
+|   |   `-- last-selection.ts # Ultima escolha por termo de busca (~/.ncd_last_selection.json)
 |   |-- tests/
 |   |   `-- run.ts            # Regressao basica de ranking e regras de diretorio
 |   `-- ui/
@@ -58,6 +59,7 @@ NCD/
 | `~/.ncd_last` | Caminho temporario para `cd` no shell |
 | `~/.ncd_bookmarks.json` | Diretorios favoritados |
 | `~/.ncd_history.json` | Historico de diretorios visitados |
+| `~/.ncd_last_selection.json` | Mapa `termo de busca -> ultimo diretorio escolhido` no picker de ambiguidade |
 
 ---
 
@@ -199,6 +201,7 @@ Quando o host nao suporta a TUI, o CLI sai com mensagem clara em vez de abrir um
 - (18/03/2026) Criação do arquivo `GEMINI.md` para documentar o resumo técnico e facilitar a continuidade por outras IAs.
 - (19/03/2026) Picker de ambiguidade/favoritos/histórico agora exibe pastas com grupos de cores: ocultas (azul), AppData (amarelo), pastas do usuário (branco), sistema/outras (cinza).
 - (23/07/2026) Corrigido bug de contraste em `getPickerLineColor` (`src/ui/app.ts`): a categoria "sistema/outras" usava a cor `grey`, que no blessed mapeia para o índice ANSI 8 (bright-black), renderizando quase preto sobre o fundo preto da lista em temas escuros de terminal. Trocado para `lightgrey` (índice ANSI 7), legível.
+- (27/07/2026) Picker de ambiguidade (`ncd <nome>` com múltiplos resultados) agora memoriza a última seleção feita para cada termo de busca em `~/.ncd_last_selection.json` (`src/core/last-selection.ts`). Na próxima chamada com o mesmo termo, o item pré-selecionado é o último escolhido, não mais o primeiro da lista. Só se aplica ao picker de busca por nome (`ncd <nome>`); os pickers de Favoritos (`F`) e Histórico (`H`) continuam abrindo no primeiro item, pois não têm um "termo de busca" associado.
 
 ---
 
